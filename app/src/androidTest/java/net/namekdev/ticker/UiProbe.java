@@ -1,4 +1,4 @@
-package com.example.tick;
+package net.namekdev.ticker;
 
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Activity;

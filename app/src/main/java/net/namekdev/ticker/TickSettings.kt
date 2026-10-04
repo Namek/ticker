@@ -1,4 +1,4 @@
-package com.example.tick
+package net.namekdev.ticker
 
 enum class TickSound(val id: String, val labelRes: Int, val audioRes: Int, val durationMillis: Long) {
     CLOCK("tick", R.string.sound_clock, R.raw.tick, 180),

@@ -1,6 +1,6 @@
 # Tick
 
-An offline Android tick timer. Kotlin, native Android views, one app module, and no network permission. Android 8 or newer. Application ID `com.example.tick`.
+An offline Android tick timer. Kotlin, native Android views, one app module, and no network permission. Android 8 or newer. Application ID `net.namekdev.ticker`.
 
 ## Build
 
@@ -17,6 +17,8 @@ export ANDROID_HOME=/path/to/android-sdk
 Alternatively, put `sdk.dir=/path/to/android-sdk` in a local, untracked `local.properties`. Android Studio can create it. The first build downloads dependencies; the app itself is entirely offline. Use `--offline` for subsequent builds if all dependencies are cached.
 
 The installable debug APK is `app/build/outputs/apk/debug/app-debug.apk`. It is signed with the local Android debug key. Keep that key if you want future `adb install -r` updates to retain settings.
+
+Changing the application ID makes Android treat this as a separate app. Settings from builds with the previous ID do not transfer automatically.
 
 ## Use
 
@@ -67,20 +69,20 @@ Reports are written to:
 Inspect a running session with:
 
 ```sh
-adb -s emulator-5580 shell dumpsys activity service com.example.tick/.TickService
+adb -s emulator-5580 shell dumpsys activity service net.namekdev.ticker/.TickService
 adb -s emulator-5580 shell dumpsys power
 ```
 
-## Install on the Galaxy S21 later
+## Install on an Android device
 
-Enable USB debugging, connect the phone, accept its debugging prompt, and use the phone's serial from `adb devices`:
+Enable USB debugging, connect the device, accept its debugging prompt, and use its serial from `adb devices`:
 
 ```sh
-adb -s PHONE_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s PHONE_SERIAL shell am start -n com.example.tick/.MainActivity
+adb -s DEVICE_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s DEVICE_SERIAL shell am start -n net.namekdev.ticker/.MainActivity
 ```
 
-Testing for this delivery uses only the emulator. The phone installation is a separate later step.
+Testing for this delivery uses only the emulator.
 
 ## Android references
 

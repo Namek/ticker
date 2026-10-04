@@ -1,4 +1,4 @@
-package com.example.tick
+package net.namekdev.ticker
 
 import android.Manifest
 import android.annotation.SuppressLint

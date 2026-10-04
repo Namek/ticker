@@ -1,4 +1,4 @@
-package com.example.tick
+package net.namekdev.ticker
 
 import org.junit.Assert.*
 import org.junit.Test

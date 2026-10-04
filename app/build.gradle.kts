@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.tick"
+    namespace = "net.namekdev.ticker"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.tick"
+        applicationId = "net.namekdev.ticker"
         minSdk = 26
         targetSdk = 36
         versionCode = 3

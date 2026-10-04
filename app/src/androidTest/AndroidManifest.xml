@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner" android:targetPackage="com.example.tick" />
+    <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner" android:targetPackage="net.namekdev.ticker" />
     <!-- Run the ADB UI probe in the test APK's process, without restarting Tick. -->
-    <instrumentation android:name="com.example.tick.UiProbe" android:targetPackage="com.example.tick.test" />
+    <instrumentation android:name="net.namekdev.ticker.UiProbe" android:targetPackage="net.namekdev.ticker.test" />
 </manifest>

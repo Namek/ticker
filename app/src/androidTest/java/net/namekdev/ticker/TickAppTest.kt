@@ -1,4 +1,4 @@
-package com.example.tick
+package net.namekdev.ticker
 
 import android.Manifest
 import android.app.NotificationManager
@@ -211,7 +211,7 @@ class TickAppTest {
         context.unbindService(connection)
         bound = false
         SystemClock.sleep(1_500)
-        val dump = shell("dumpsys activity service com.example.tick/.TickService")
+        val dump = shell("dumpsys activity service net.namekdev.ticker/.TickService")
         assertTrue(dump, dump.contains("engineRunning=true foreground=true"))
     }
 
@@ -223,7 +223,7 @@ class TickAppTest {
         shell("input keyevent KEYCODE_SLEEP")
         await { !context.getSystemService(PowerManager::class.java).isInteractive }
         await { currentState().completed >= before + 3 }
-        val dump = shell("dumpsys activity service com.example.tick/.TickService")
+        val dump = shell("dumpsys activity service net.namekdev.ticker/.TickService")
         assertTrue(dump, dump.contains("wakeLockHeld=true"))
         assertTrue(dump, dump.contains("foreground=true"))
         // Exercise the notification's actual PendingIntent while the screen is off.
@@ -432,7 +432,7 @@ class TickAppTest {
     }
 
     private fun assertReleased() {
-        val dump = shell("dumpsys activity service com.example.tick/.TickService")
+        val dump = shell("dumpsys activity service net.namekdev.ticker/.TickService")
         assertTrue(dump, dump.contains("wakeLockHeld=false soundPoolLoaded=false engineRunning=false foreground=false"))
         assertTrue(context.getSystemService(NotificationManager::class.java).activeNotifications.isEmpty())
     }

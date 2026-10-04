@@ -1,4 +1,4 @@
-package com.example.tick
+package net.namekdev.ticker
 
 /** All calls, including scheduled callbacks, run on the service's main thread. */
 class TickEngine(
