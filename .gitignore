@@ -1,0 +1,20 @@
+.gradle/
+.kotlin/
+.idea/
+**/build/
+local.properties
+*.iml
+.DS_Store
+
+# Generated deliverables and validation output
+/dist/
+/validation/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local signing files
+*.jks
+*.keystore
+keystore.properties

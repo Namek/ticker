@@ -1,0 +1,8 @@
+<resources>
+    <color name="background">#FAFAF7</color>
+    <color name="panel">#EEF1EA</color>
+    <color name="ink">#1B281F</color>
+    <color name="muted">#526054</color>
+    <color name="accent">#25603C</color>
+    <color name="on_accent">#FFFFFF</color>
+</resources>

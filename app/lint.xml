@@ -1,0 +1,4 @@
+<lint>
+    <!-- The requested toolchain deliberately pins Gradle 8.13. -->
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+</lint>
