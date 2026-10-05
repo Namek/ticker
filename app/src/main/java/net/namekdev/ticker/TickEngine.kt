@@ -6,7 +6,7 @@ class TickEngine(
     private val schedule: (Long, () -> Unit) -> Unit,
     private val cancelScheduled: () -> Unit,
     private val play: () -> Boolean,
-    private val onTickCompleted: (Long) -> Unit,
+    private val onIntervalCompleted: (Long) -> Unit,
     private val onFinished: (Boolean) -> Unit,
 ) {
     var running = false
@@ -24,7 +24,7 @@ class TickEngine(
         origin = now()
         running = true
         generation++
-        tick(generation)
+        tick(generation, first = true)
     }
 
     fun stop() {
@@ -33,28 +33,30 @@ class TickEngine(
         cancelScheduled()
     }
 
-    private fun tick(session: Long) {
+    private fun tick(session: Long, first: Boolean = false) {
         if (!running || session != generation) return
         if (!play()) {
             stop()
             onFinished(false)
             return
         }
-        schedule(settings.sound.completionMillis) {
-            if (!running || session != generation) return@schedule
+        if (!first) {
             completed++
-            onTickCompleted(completed)
-            if (!settings.unlimited && completed == settings.repeatCount.toLong()) {
+            onIntervalCompleted(completed)
+        }
+        if (!settings.unlimited && completed == settings.repeatCount.toLong()) {
+            // The final boundary has its own sound; keep resources until its tail drains.
+            schedule(settings.sound.completionMillis) {
+                if (!running || session != generation) return@schedule
                 stop()
                 onFinished(true)
-            } else {
-                // Keep the original phase, skip missed slots, and never queue catch-up ticks.
-                // Waiting until audio has drained also prevents overlapping delayed ticks.
-                val elapsed = now() - origin
-                val delay = settings.intervalMillis - elapsed % settings.intervalMillis
-                schedule(delay) { tick(session) }
             }
+        } else {
+            // Keep the original phase and queue only one future boundary, skipping missed slots.
+            // Sound tails may overlap, but never delay the next interval.
+            val elapsed = now() - origin
+            val delay = settings.intervalMillis - elapsed % settings.intervalMillis
+            schedule(delay) { tick(session) }
         }
     }
-
 }

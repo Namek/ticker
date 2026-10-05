@@ -1,10 +1,10 @@
 package net.namekdev.ticker
 
 enum class TickSound(val id: String, val labelRes: Int, val audioRes: Int, val durationMillis: Long) {
-    CLOCK("tick", R.string.sound_clock, R.raw.tick, 180),
-    GONG("gong", R.string.sound_gong, R.raw.gong, 750),
-    BOWL("bowl", R.string.sound_bowl, R.raw.bowl, 750),
-    BELL("bell", R.string.sound_bell, R.raw.bell, 600);
+    CLOCK("tick", R.string.sound_clock, R.raw.tick, 300),
+    GONG("gong", R.string.sound_gong, R.raw.gong, 3_000),
+    BOWL("bowl", R.string.sound_bowl, R.raw.bowl, 3_000),
+    BELL("bell", R.string.sound_bell, R.raw.bell, 2_000);
 
     // SoundPool has no completion callback. Leave time for the output buffer to drain.
     val completionMillis: Long get() = durationMillis + 200L

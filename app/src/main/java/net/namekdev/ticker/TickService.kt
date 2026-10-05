@@ -57,7 +57,7 @@ class TickService : Service() {
                 false
             }
         },
-        onTickCompleted = { count ->
+        onIntervalCompleted = { count ->
             publish(state.copy(completed = count))
             // The service must keep running even when notification permission is denied.
             if (getSystemService(NotificationManager::class.java).areNotificationsEnabled()) {
@@ -126,7 +126,8 @@ class TickService : Service() {
                     setReferenceCounted(false)
                     acquire()
                 }
-            val newPool = SoundPool.Builder().setMaxStreams(1).setAudioAttributes(
+            // Three-second recordings can ring across the minimum one-second interval.
+            val newPool = SoundPool.Builder().setMaxStreams(4).setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)

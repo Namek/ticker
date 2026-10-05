@@ -265,11 +265,11 @@ class TickAppTest {
     @Test fun elapsedTimeAdvancesBetweenTicksAndStopRequiresConfirmation() {
         configure(10, 7, true)
         click()
-        await { currentState().completed == 1L }
+        await { currentState().phase == Phase.PLAYING }
         val startedAt = currentState().startedAtMillis!!
         val initialTime = activityValue { it.findViewById<Chronometer>(R.id.elapsed).text.toString() }
         await { activityValue { it.findViewById<Chronometer>(R.id.elapsed).text.toString() != initialTime } }
-        assertEquals(1L, currentState().completed)
+        assertEquals(0L, currentState().completed)
         assertEquals(startedAt, activityValue { it.findViewById<Chronometer>(R.id.elapsed).base })
 
         requestStop()
@@ -341,7 +341,7 @@ class TickAppTest {
             assertFalse(activityValue { it.findViewById<Spinner>(R.id.sound).isEnabled })
             val started = currentState().startedAtMillis!!
             await { currentState().phase == Phase.COMPLETE }
-            assertTrue(SystemClock.elapsedRealtime() - started >= sound.durationMillis)
+            assertTrue(SystemClock.elapsedRealtime() - started >= 1_000 + sound.completionMillis)
             assertEquals(1L, currentState().completed)
             assertTrue(activityValue { it.findViewById<Spinner>(R.id.sound).isEnabled })
             assertReleased()
@@ -370,6 +370,84 @@ class TickAppTest {
         scenario.onActivity { it.findViewById<Switch>(R.id.unlimited).isChecked = false }
         assertEquals("17", activityValue { it.findViewById<EditText>(R.id.repeats).text.toString() })
         assertTrue(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
+    }
+
+    @Test fun dropdownPreviewsTheSoundAndCanReplayTheSameSelection() {
+        assertFalse(activityValue { it.preview.active })
+        repeat(2) {
+            scenario.onActivity { it.findViewById<Spinner>(R.id.sound).performClick() }
+            val label = context.getString(TickSound.GONG.labelRes)
+            await {
+                instrumentation.uiAutomation.rootInActiveWindow
+                    ?.findAccessibilityNodeInfosByText(label)?.any { it.text?.toString() == label } == true
+            }
+            val option = instrumentation.uiAutomation.rootInActiveWindow
+                .findAccessibilityNodeInfosByText(label).first { it.text?.toString() == label }
+            assertTrue(option.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            await { activityValue { it.preview.playing && it.preview.sound == TickSound.GONG } }
+            assertEquals(TickSound.GONG, SettingsStore(context).load().sound)
+            assertFalse(currentState().active)
+            assertReleased()
+            await { activityValue { !it.preview.active } }
+        }
+    }
+
+    @Test fun replacingALoadingPreviewAndStartingPlaybackReleaseTheOldPreview() {
+        configure(1, 1, true)
+        scenario.onActivity {
+            it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal)
+            assertTrue(it.preview.active)
+            assertFalse(it.preview.playing)
+            it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.BOWL.ordinal)
+            assertEquals(TickSound.BOWL, it.preview.sound)
+        }
+        await { activityValue { it.preview.playing } }
+        scenario.onActivity {
+            it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.BELL.ordinal)
+            assertFalse(it.preview.playing)
+            it.findViewById<Button>(R.id.start_stop).performClick()
+            assertFalse(it.preview.active)
+        }
+        await { currentState().phase == Phase.PLAYING }
+        assertEquals(TickSound.BELL, currentState().settings?.sound)
+        assertFalse(activityValue { it.preview.active })
+        click()
+        await { currentState().phase == Phase.STOPPED }
+        assertReleased()
+    }
+
+    @Test fun rotationAndReopeningReleasePreviewWithoutAutoplaying() {
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal) }
+        await { activityValue { it.preview.playing } }
+        val oldPreview = activityValue { it.preview }
+        scenario.recreate()
+        assertFalse(oldPreview.active)
+        assertFalse(activityValue { it.preview.active })
+        assertEquals(TickSound.GONG.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.BOWL.ordinal) }
+        await { activityValue { it.preview.playing } }
+        val closingPreview = activityValue { it.preview }
+        scenario.close()
+        assertFalse(closingPreview.active)
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+        instrumentation.waitForIdleSync()
+        assertFalse(activityValue { it.preview.active })
+        assertEquals(TickSound.BOWL.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
+        assertFalse(currentState().active)
+    }
+
+    @Test fun finalGongRingsBeforeCompletionAndReleasesResourcesAfterwards() {
+        configure(1, 2, false)
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal) }
+        click()
+        await { currentState().phase == Phase.PLAYING }
+        val started = currentState().startedAtMillis!!
+        await { currentState().completed == 2L }
+        assertEquals(Phase.PLAYING, currentState().phase)
+        assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService").contains("wakeLockHeld=true"))
+        await { currentState().phase == Phase.COMPLETE }
+        assertTrue(SystemClock.elapsedRealtime() - started >= 2_000 + TickSound.GONG.completionMillis)
+        assertReleased()
     }
 
     private fun configure(seconds: Int, count: Int, unlimited: Boolean) {

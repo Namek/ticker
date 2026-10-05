@@ -19,13 +19,12 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
-import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Chronometer
 import android.widget.EditText
 import android.widget.Switch
-import android.widget.Spinner
 import android.widget.TextView
+import android.widget.Toast
 import java.text.NumberFormat
 
 @SuppressLint("SetTextI18n") // Editable numbers deliberately use the parser's ungrouped ASCII format.
@@ -34,7 +33,10 @@ class MainActivity : Activity() {
     private lateinit var interval: EditText
     private lateinit var repeats: EditText
     private lateinit var unlimited: Switch
-    private lateinit var sound: Spinner
+    private lateinit var sound: SoundSpinner
+    internal val preview by lazy {
+        SoundPreview(applicationContext) { Toast.makeText(this, R.string.preview_error, Toast.LENGTH_SHORT).show() }
+    }
     private lateinit var button: Button
     private lateinit var counter: TextView
     private lateinit var status: TextView
@@ -50,8 +52,10 @@ class MainActivity : Activity() {
     private val observer: (SessionState) -> Unit = { state ->
         session = state
         startPending = false
-        if (state.active) state.settings?.let { showSettings(it) }
-        else dismissStopConfirmation()
+        if (state.active) {
+            preview.stop()
+            state.settings?.let { showSettings(it) }
+        } else dismissStopConfirmation()
         render()
         if (state.active && stopConfirmationPending) showStopConfirmation()
     }
@@ -125,11 +129,11 @@ class MainActivity : Activity() {
                 render()
             }
         }
-        sound.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (!updatingFields && !session.active && !startPending) saveSettings()
+        sound.onSelection = { position ->
+            if (!updatingFields && !session.active && !startPending) {
+                saveSettings()
+                preview.play(TickSound.entries[position])
             }
-            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
         button.setOnClickListener { if (!session.active && !startPending) startPlayback() }
         stopButton.setOnClickListener { showStopConfirmation() }
@@ -149,6 +153,7 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        preview.stop()
         elapsed.stop()
         // Keep the pending choice through rotation, without retaining the old window.
         stopDialog?.setOnDismissListener(null)
@@ -213,6 +218,7 @@ class MainActivity : Activity() {
         val seconds = validate(interval)
         val count = if (unlimited.isChecked) store.load().repeatCount else validate(repeats)
         if (seconds == null || count == null) return
+        preview.stop()
         saveSettings()
         getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(interval.windowToken, 0)
         startPending = true
