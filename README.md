@@ -2,7 +2,13 @@
 
 An offline Android tick timer. Kotlin, native Android views, one app module, and no network permission. Android 8 or newer. Application ID `net.namekdev.ticker`.
 
-## Build
+## Screenshots
+
+| Settings | Timer |
+| --- | --- |
+| <img src="docs/screenshots/settings.png" alt="Tick settings screen" width="280"> | <img src="docs/screenshots/timer.png" alt="Tick timer screen" width="280"> |
+
+## Build a release APK
 
 Use JDK 21 and an Android SDK with platform 36 and build tools 35.0.0 installed. The project pins Gradle 8.13, Android Gradle Plugin 8.13.2, and Kotlin 2.3.21. Compile and target SDK are 36; minimum SDK is 26. Java and Kotlin bytecode target 17.
 
@@ -11,12 +17,14 @@ On macOS:
 ```sh
 export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
 export ANDROID_HOME=/path/to/android-sdk
-./gradlew testDebugUnitTest lintDebug assembleDebug
+./gradlew testReleaseUnitTest lintRelease assembleRelease
+mkdir -p dist
+cp app/build/outputs/apk/release/app-release-unsigned.apk dist/tick-release.apk
 ```
 
 Alternatively, put `sdk.dir=/path/to/android-sdk` in a local, untracked `local.properties`. Android Studio can create it. The first build downloads dependencies; the app itself is entirely offline. Use `--offline` for subsequent builds if all dependencies are cached.
 
-The installable debug APK is `app/build/outputs/apk/debug/app-debug.apk`. It is signed with the local Android debug key. Keep that key if you want future `adb install -r` updates to retain settings.
+The release APK is `dist/tick-release.apk`. It is unsigned; Android requires a signature before installation.
 
 Changing the application ID makes Android treat this as a separate app. Settings from builds with the previous ID do not transfer automatically.
 
@@ -70,9 +78,9 @@ Pause tests cover remaining interval fractions, both finite limits, repeated pau
 
 Reports are written to:
 
-- `app/build/reports/tests/testDebugUnitTest/index.html`
+- `app/build/reports/tests/testReleaseUnitTest/index.html`
 - `app/build/reports/androidTests/connected/debug/index.html`
-- `app/build/reports/lint-results-debug.html`
+- `app/build/reports/lint-results-release.html`
 
 Inspect a running session with:
 
@@ -83,10 +91,10 @@ adb -s emulator-5580 shell dumpsys power
 
 ## Install on an Android device
 
-Enable USB debugging, connect the device, accept its debugging prompt, and use its serial from `adb devices`:
+After signing the release APK, enable USB debugging, connect the device, accept its debugging prompt, and use its serial from `adb devices`:
 
 ```sh
-adb -s DEVICE_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s DEVICE_SERIAL install -r dist/tick-release.apk
 adb -s DEVICE_SERIAL shell am start -n net.namekdev.ticker/.MainActivity
 ```
 
