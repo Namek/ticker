@@ -15,8 +15,8 @@ import android.os.SystemClock
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
-import android.widget.Chronometer
 import android.widget.EditText
+import android.widget.RadioGroup
 import android.widget.Switch
 import android.widget.Spinner
 import android.widget.TextView
@@ -74,6 +74,7 @@ class TickAppTest {
 
     @Test fun defaultsValidationAndAutomaticSettingsRestoration() {
         assertEquals(TickSettings(), SettingsStore(context).load())
+        assertFalse(activityValue { it.findViewById<View>(R.id.playback_error).isShown })
         scenario.onActivity { activity ->
             val interval = activity.findViewById<EditText>(R.id.interval)
             val repeats = activity.findViewById<EditText>(R.id.repeats)
@@ -127,7 +128,7 @@ class TickAppTest {
         assertFalse(activityValue { it.findViewById<Switch>(R.id.unlimited).isEnabled })
         await { currentState().phase == Phase.COMPLETE }
         assertEquals(3L, currentState().completed)
-        assertEquals("3", activityValue { it.findViewById<TextView>(R.id.counter).text.toString() })
+        assertFalse(activityValue { it.findViewById<View>(R.id.playback_error).isShown })
         assertTrue(activityValue { it.findViewById<EditText>(R.id.interval).isEnabled })
         assertTrue(activityValue { it.findViewById<View>(R.id.configuration_screen).isShown })
         assertReleased()
@@ -143,14 +144,14 @@ class TickAppTest {
         await { activityValue { it.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE } }
         scenario.recreate()
         await { activityValue { it.findViewById<Button>(R.id.stop).isShown } }
-        assertEquals(startedAt, activityValue { it.findViewById<Chronometer>(R.id.elapsed).base })
+        assertTimerMatchesSession()
         assertTrue(currentState().completed >= before)
         scenario.close()
         val closedCount = currentState().completed
         await { currentState().completed > closedCount }
         scenario = ActivityScenario.launch(MainActivity::class.java)
         await { activityValue { it.findViewById<Button>(R.id.stop).isShown } }
-        assertEquals(startedAt, activityValue { it.findViewById<Chronometer>(R.id.elapsed).base })
+        assertTimerMatchesSession()
         assertEquals(startedAt, currentState().startedAtMillis)
         assertFalse(activityValue { it.findViewById<EditText>(R.id.interval).isEnabled })
         click()
@@ -185,8 +186,12 @@ class TickAppTest {
 
     @Test fun stopWhileSoundLoadsCannotBeUndoneByLoadCallback() {
         // Same main-loop turn guarantees Stop precedes SoundPool's asynchronous load callback.
-        instrumentation.runOnMainSync {
+        scenario.onActivity { activity ->
             service.onStartCommand(startIntent(1, 10, true), 0, 0)
+            assertEquals(Phase.LOADING, service.state.phase)
+            assertFalse(activity.findViewById<Button>(R.id.pause_resume).isEnabled)
+            service.onStartCommand(Intent().setAction(TickService.ACTION_PAUSE), 0, 0)
+            service.onStartCommand(Intent().setAction(TickService.ACTION_RESUME), 0, 0)
             assertEquals(Phase.LOADING, service.state.phase)
             service.onStartCommand(Intent().setAction(TickService.ACTION_STOP), 0, 0)
         }
@@ -229,7 +234,7 @@ class TickAppTest {
         // Exercise the notification's actual PendingIntent while the screen is off.
         val notification = context.getSystemService(NotificationManager::class.java).activeNotifications.single()
         assertTrue(notification.notification.flags and android.app.Notification.FLAG_ONGOING_EVENT != 0)
-        notification.notification.actions.single().actionIntent.send()
+        notification.notification.actions.single { it.title == "Stop" }.actionIntent.send()
         await { currentState().phase == Phase.STOPPED }
         assertReleased()
     }
@@ -244,8 +249,8 @@ class TickAppTest {
         assertNull(channel.sound)
         assertFalse(channel.shouldVibrate())
         assertEquals(NotificationManager.IMPORTANCE_LOW, channel.importance)
-        assertEquals("Stop", notification.actions.single().title.toString())
-        notification.actions.single().actionIntent.send()
+        assertEquals(listOf("Pause", "Stop"), notification.actions.map { it.title.toString() })
+        notification.actions.single { it.title == "Stop" }.actionIntent.send()
         await { currentState().phase == Phase.STOPPED }
         assertReleased()
     }
@@ -267,10 +272,12 @@ class TickAppTest {
         click()
         await { currentState().phase == Phase.PLAYING }
         val startedAt = currentState().startedAtMillis!!
-        val initialTime = activityValue { it.findViewById<Chronometer>(R.id.elapsed).text.toString() }
-        await { activityValue { it.findViewById<Chronometer>(R.id.elapsed).text.toString() != initialTime } }
+        val initialTime = displayedSeconds()
+        await { displayedSeconds() > initialTime }
         assertEquals(0L, currentState().completed)
-        assertEquals(startedAt, activityValue { it.findViewById<Chronometer>(R.id.elapsed).base })
+        assertEquals("Elapsed", activityValue { it.findViewById<TextView>(R.id.timer_label).text.toString() })
+        assertFalse(activityValue { it.findViewById<View>(R.id.playback_counter).isShown })
+        assertTimerMatchesSession()
 
         requestStop()
         await { dialogButton("Keep ticking") != null }
@@ -291,7 +298,146 @@ class TickAppTest {
         click()
         await { currentState().phase == Phase.PLAYING }
         assertTrue(currentState().startedAtMillis!! > startedAt)
-        assertEquals(currentState().startedAtMillis, activityValue { it.findViewById<Chronometer>(R.id.elapsed).base })
+        assertTimerMatchesSession()
+    }
+
+    @Test fun bothLimitsAndSelectedModeSurviveRotationReopeningAndUnlimited() {
+        configure(7, 13, false)
+        configureTime(1, 25)
+        val saved = TickSettings(7, 13, false, limitMode = LimitMode.TIME, timeLimitSeconds = 85)
+        assertEquals(saved, SettingsStore(context).load())
+        scenario.recreate()
+        assertEquals(R.id.time_mode, activityValue { it.findViewById<RadioGroup>(R.id.limit_mode).checkedRadioButtonId })
+        assertEquals("1", activityValue { it.findViewById<EditText>(R.id.time_minutes).text.toString() })
+        assertEquals("25", activityValue { it.findViewById<EditText>(R.id.time_seconds).text.toString() })
+        assertFalse(activityValue { it.findViewById<View>(R.id.repeats).isShown })
+        scenario.onActivity { it.findViewById<Switch>(R.id.unlimited).isChecked = true }
+        for (id in listOf(R.id.time_minutes, R.id.time_seconds, R.id.count_mode, R.id.time_mode)) {
+            assertFalse(activityValue { it.findViewById<View>(id).isEnabled })
+        }
+        scenario.close()
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+        assertEquals(saved.copy(unlimited = true), SettingsStore(context).load())
+        assertFalse(activityValue { it.findViewById<View>(R.id.time_seconds).isEnabled })
+        scenario.onActivity {
+            it.findViewById<Switch>(R.id.unlimited).isChecked = false
+            it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.count_mode)
+        }
+        assertEquals("13", activityValue { it.findViewById<EditText>(R.id.repeats).text.toString() })
+        assertTrue(activityValue { it.findViewById<View>(R.id.repeats).isEnabled })
+        scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.time_mode) }
+        assertEquals(saved, SettingsStore(context).load())
+        assertEquals("25", activityValue { it.findViewById<EditText>(R.id.time_seconds).text.toString() })
+        assertTrue(activityValue { it.findViewById<View>(R.id.time_seconds).isEnabled })
+    }
+
+    @Test fun invalidTimeLimitsCannotStartOrReplaceTheLastValidLimit() {
+        configure(2, 7, false)
+        configureTime(0, 9)
+        scenario.onActivity { activity ->
+            val minutes = activity.findViewById<EditText>(R.id.time_minutes)
+            val seconds = activity.findViewById<EditText>(R.id.time_seconds)
+            for ((m, s) in listOf("0" to "", "0" to "0", "0" to "-1", "0" to "60",
+                "0" to "2147483648", "" to "9", "-1" to "9", "35791394" to "9")) {
+                seconds.setText("")
+                minutes.setText(m)
+                seconds.setText(s)
+                activity.findViewById<Button>(R.id.start_stop).performClick()
+                assertNotNull(minutes.error)
+                assertNotNull(seconds.error)
+                assertFalse(service.state.active)
+            }
+        }
+        assertEquals(9, SettingsStore(context).load().timeLimitSeconds)
+        scenario.onActivity { it.findViewById<Switch>(R.id.unlimited).isChecked = true }
+        assertEquals("0", activityValue { it.findViewById<EditText>(R.id.time_minutes).text.toString() })
+        assertEquals("9", activityValue { it.findViewById<EditText>(R.id.time_seconds).text.toString() })
+        click()
+        await { currentState().phase == Phase.PLAYING }
+        assertTrue(currentState().settings!!.unlimited)
+        assertEquals("Elapsed", activityValue { it.findViewById<TextView>(R.id.timer_label).text.toString() })
+        assertFalse(activityValue { it.findViewById<View>(R.id.playback_counter).isShown })
+        click()
+        assertReleased()
+    }
+
+    @Test fun countModeCountsDownTimeAndIntervalsThroughTheFinalSound() {
+        configure(2, 2, false)
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal) }
+        click()
+        await { currentState().phase == Phase.PLAYING }
+        assertEquals(4L, displayedSeconds())
+        assertEquals("Time left", activityValue { it.findViewById<TextView>(R.id.timer_label).text.toString() })
+        assertEquals("2 intervals left", activityValue { it.findViewById<TextView>(R.id.playback_counter).text.toString() })
+        await { displayedSeconds() == 3L }
+        assertEquals(0L, currentState().completed)
+        await { currentState().completed == 1L }
+        assertEquals("1 interval left", activityValue { it.findViewById<TextView>(R.id.playback_counter).text.toString() })
+        await { displayedSeconds() == 0L }
+        assertEquals("0 intervals left", activityValue { it.findViewById<TextView>(R.id.playback_counter).text.toString() })
+        assertEquals(Phase.PLAYING, currentState().phase)
+        SystemClock.sleep(1_100)
+        assertEquals(0L, displayedSeconds())
+        assertEquals(Phase.PLAYING, currentState().phase)
+        await { currentState().phase == Phase.COMPLETE }
+        assertTrue(activityValue { it.findViewById<View>(R.id.configuration_screen).isShown })
+        assertReleased()
+    }
+
+    @Test fun timeLimitCountsDownWithoutIntervalsAndEndsBetweenTicks() {
+        configure(2, 99, false)
+        configureTime(0, 5)
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal) }
+        click()
+        await { currentState().phase == Phase.PLAYING }
+        val started = currentState().startedAtMillis!!
+        assertEquals(5L, displayedSeconds())
+        assertEquals(LimitMode.TIME, currentState().settings!!.limitMode)
+        assertEquals("Time left", activityValue { it.findViewById<TextView>(R.id.timer_label).text.toString() })
+        assertFalse(activityValue { it.findViewById<View>(R.id.playback_counter).isShown })
+        for (id in listOf(R.id.time_minutes, R.id.time_seconds, R.id.count_mode, R.id.time_mode)) {
+            assertFalse(activityValue { it.findViewById<View>(id).isEnabled })
+        }
+        await { displayedSeconds() == 4L }
+        await { displayedSeconds() == 0L }
+        assertEquals(2L, currentState().completed)
+        assertEquals(Phase.PLAYING, currentState().phase)
+        SystemClock.sleep(1_100)
+        assertEquals(0L, displayedSeconds())
+        assertEquals(Phase.PLAYING, currentState().phase)
+        await { currentState().phase == Phase.COMPLETE }
+        val duration = SystemClock.elapsedRealtime() - started
+        assertTrue("Unexpected duration: $duration", duration in 8_200..9_500)
+        assertTrue(activityValue { it.findViewById<View>(R.id.configuration_screen).isShown })
+        assertReleased()
+    }
+
+    @Test fun finiteCountdownSurvivesRotationAndReopeningWithoutResetting() {
+        configure(2, 30, false)
+        configureTime(0, 30)
+        click()
+        await { currentState().phase == Phase.PLAYING }
+        val started = currentState().startedAtMillis
+        await { displayedSeconds() < 30 }
+        val before = displayedSeconds()
+        scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        await { activityValue { it.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE } }
+        scenario.recreate()
+        await { activityValue { it.findViewById<Button>(R.id.stop).isShown } }
+        assertEquals(started, currentState().startedAtMillis)
+        assertTrue(displayedSeconds() <= before)
+        assertTimerMatchesSession()
+        scenario.close()
+        SystemClock.sleep(1_200)
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+        await { activityValue { it.findViewById<Button>(R.id.stop).isShown } }
+        assertEquals(started, currentState().startedAtMillis)
+        assertTrue(displayedSeconds() < before)
+        assertTimerMatchesSession()
+        click()
+        await { currentState().phase == Phase.STOPPED }
+        assertEquals(LimitMode.TIME, SettingsStore(context).load().limitMode)
+        assertReleased()
     }
 
     @Test fun stopConfirmationSurvivesRotationWithoutStoppingTheSession() {
@@ -326,6 +472,20 @@ class TickAppTest {
     @Test fun invalidServiceCommandFailsWithoutAcquiringResources() {
         instrumentation.runOnMainSync { service.onStartCommand(startIntent(0, -1, false), 0, 0) }
         assertEquals(Phase.FAILED, currentState().phase)
+        assertTrue(activityValue { it.findViewById<View>(R.id.playback_error).isShown })
+        assertEquals(context.getString(R.string.playback_error),
+            activityValue { it.findViewById<TextView>(R.id.playback_error).text.toString() })
+        assertReleased()
+        instrumentation.runOnMainSync {
+            service.onStartCommand(startIntent(1, 1, false).putExtra(TickService.EXTRA_TIME_MODE, true)
+                .putExtra(TickService.EXTRA_TIME_LIMIT, 0), 0, 0)
+        }
+        assertEquals(Phase.FAILED, currentState().phase)
+        assertReleased()
+        configure(1, 1, false)
+        click()
+        await { currentState().phase == Phase.COMPLETE }
+        assertFalse(activityValue { it.findViewById<View>(R.id.playback_error).isShown })
         assertReleased()
     }
 
@@ -350,22 +510,22 @@ class TickAppTest {
 
     @Test fun soundSelectionSurvivesRotationReopeningAndUnlimited() {
         configure(10, 17, true)
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal) }
-        await { SettingsStore(context).load().sound == TickSound.GONG }
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.ELECTRIC_CLOCK.ordinal) }
+        await { SettingsStore(context).load().sound == TickSound.ELECTRIC_CLOCK }
         scenario.recreate()
-        assertEquals(TickSound.GONG.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
+        assertEquals(TickSound.ELECTRIC_CLOCK.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
         click()
         await { currentState().phase == Phase.PLAYING }
         scenario.recreate()
         await { activityValue { it.findViewById<Button>(R.id.stop).isShown } }
-        assertEquals(TickSound.GONG, currentState().settings?.sound)
+        assertEquals(TickSound.ELECTRIC_CLOCK, currentState().settings?.sound)
         scenario.close()
         scenario = ActivityScenario.launch(MainActivity::class.java)
         await { activityValue { it.findViewById<Button>(R.id.stop).isShown } }
         click()
         await { currentState().phase == Phase.STOPPED }
-        assertEquals(TickSettings(10, 17, true, TickSound.GONG), SettingsStore(context).load())
-        assertEquals(TickSound.GONG.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
+        assertEquals(TickSettings(10, 17, true, TickSound.ELECTRIC_CLOCK), SettingsStore(context).load())
+        assertEquals(TickSound.ELECTRIC_CLOCK.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
         assertFalse(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
         scenario.onActivity { it.findViewById<Switch>(R.id.unlimited).isChecked = false }
         assertEquals("17", activityValue { it.findViewById<EditText>(R.id.repeats).text.toString() })
@@ -374,21 +534,23 @@ class TickAppTest {
 
     @Test fun dropdownPreviewsTheSoundAndCanReplayTheSameSelection() {
         assertFalse(activityValue { it.preview.active })
-        repeat(2) {
-            scenario.onActivity { it.findViewById<Spinner>(R.id.sound).performClick() }
-            val label = context.getString(TickSound.GONG.labelRes)
-            await {
-                instrumentation.uiAutomation.rootInActiveWindow
-                    ?.findAccessibilityNodeInfosByText(label)?.any { it.text?.toString() == label } == true
+        for (sound in listOf(TickSound.GONG, TickSound.ELECTRIC_CLOCK)) {
+            repeat(2) {
+                scenario.onActivity { it.findViewById<Spinner>(R.id.sound).performClick() }
+                val label = context.getString(sound.labelRes)
+                await {
+                    instrumentation.uiAutomation.rootInActiveWindow
+                        ?.findAccessibilityNodeInfosByText(label)?.any { it.text?.toString() == label } == true
+                }
+                val option = instrumentation.uiAutomation.rootInActiveWindow
+                    .findAccessibilityNodeInfosByText(label).first { it.text?.toString() == label }
+                assertTrue(option.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+                await { activityValue { it.preview.playing && it.preview.sound == sound } }
+                assertEquals(sound, SettingsStore(context).load().sound)
+                assertFalse(currentState().active)
+                assertReleased()
+                await { activityValue { !it.preview.active } }
             }
-            val option = instrumentation.uiAutomation.rootInActiveWindow
-                .findAccessibilityNodeInfosByText(label).first { it.text?.toString() == label }
-            assertTrue(option.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            await { activityValue { it.preview.playing && it.preview.sound == TickSound.GONG } }
-            assertEquals(TickSound.GONG, SettingsStore(context).load().sound)
-            assertFalse(currentState().active)
-            assertReleased()
-            await { activityValue { !it.preview.active } }
         }
     }
 
@@ -450,12 +612,181 @@ class TickAppTest {
         assertReleased()
     }
 
+    @Test fun pauseFreezesBothFiniteLimitsAndResumeCompletesTheRemainingTime() {
+        for (mode in LimitMode.entries) {
+            configure(2, 2, false)
+            if (mode == LimitMode.TIME) configureTime(0, 3)
+            click()
+            await { currentState().phase == Phase.PLAYING }
+            await { currentState().elapsedMillis(SystemClock.elapsedRealtime()) >= 500 }
+            pauseOrResume()
+            await { currentState().phase == Phase.PAUSED }
+            val paused = currentState()
+            val displayed = displayedSeconds()
+            assertFalse(activityValue { it.findViewById<EditText>(R.id.interval).isEnabled })
+            assertEquals("Resume", activityValue { it.findViewById<Button>(R.id.pause_resume).text.toString() })
+            assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService")
+                .contains("wakeLockHeld=false soundPoolLoaded=true engineRunning=true foreground=true"))
+            SystemClock.sleep(1_200)
+            assertEquals(paused, currentState())
+            assertEquals(displayed, displayedSeconds())
+            assertTimerMatchesSession()
+            val resumedAt = SystemClock.elapsedRealtime()
+            pauseOrResume()
+            await { currentState().phase == Phase.PLAYING }
+            assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService").contains("wakeLockHeld=true"))
+            await { currentState().phase == Phase.COMPLETE }
+            val remaining = paused.settings!!.durationSeconds!! * 1_000 - paused.elapsedMillis(resumedAt)
+            assertTrue(SystemClock.elapsedRealtime() - resumedAt >= remaining + TickSound.CLOCK.completionMillis)
+            assertEquals(if (mode == LimitMode.COUNT) 2L else 1L, currentState().completed)
+            assertReleased()
+        }
+    }
+
+    @Test fun pausedUnlimitedSessionSurvivesRotationReopeningAndScreenLock() {
+        configure(1, 3, true)
+        click()
+        await { currentState().completed >= 1 }
+        pauseOrResume()
+        await { currentState().phase == Phase.PAUSED }
+        val paused = currentState()
+        val displayed = displayedSeconds()
+        scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        await { activityValue { it.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE } }
+        scenario.recreate()
+        await { activityValue { it.findViewById<Button>(R.id.pause_resume).isEnabled } }
+        assertEquals("Resume", activityValue { it.findViewById<Button>(R.id.pause_resume).text.toString() })
+        scenario.close()
+        shell("input keyevent KEYCODE_SLEEP")
+        SystemClock.sleep(1_500)
+        assertEquals(paused, currentState())
+        assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService").contains("wakeLockHeld=false"))
+        shell("input keyevent KEYCODE_WAKEUP")
+        shell("wm dismiss-keyguard")
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+        await { activityValue { it.findViewById<Button>(R.id.pause_resume).isEnabled } }
+        assertEquals(displayed, displayedSeconds())
+        assertTimerMatchesSession()
+        requestStop()
+        chooseDialog("Keep paused")
+        assertEquals(paused, currentState())
+        pauseOrResume()
+        await { currentState().completed > paused.completed }
+        assertTimerMatchesSession()
+        pauseOrResume()
+        await { currentState().phase == Phase.PAUSED }
+        requestStop()
+        scenario.recreate()
+        await { dialogButton("Keep paused") != null }
+        chooseDialog("Stop")
+        await { currentState().phase == Phase.STOPPED }
+        assertTrue(activityValue { it.findViewById<View>(R.id.configuration_screen).isShown })
+        assertReleased()
+    }
+
+    @Test fun notificationPauseResumeAreImmediateAndDuplicateCommandsDoNotRestart() {
+        configure(10, 2, true)
+        click()
+        await { currentState().phase == Phase.PLAYING }
+        val manager = context.getSystemService(NotificationManager::class.java)
+        // Pause must appear as soon as the sample loads, before the first interval ends.
+        val pause = manager.activeNotifications.single().notification.actions.single { it.title == "Pause" }.actionIntent
+        pause.send()
+        await { currentState().phase == Phase.PAUSED }
+        val paused = currentState()
+        pause.send()
+        instrumentation.runOnMainSync { service.onStartCommand(startIntent(1, 99, true), 0, 0) }
+        assertEquals(paused, currentState())
+        val notification = manager.activeNotifications.single().notification
+        assertEquals("Tick is paused", notification.extras.getString(android.app.Notification.EXTRA_TITLE))
+        val resume = notification.actions.single { it.title == "Resume" }.actionIntent
+        resume.send()
+        await { currentState().phase == Phase.PLAYING }
+        val resumedBase = currentState().startedAtMillis
+        resume.send()
+        assertEquals(resumedBase, currentState().startedAtMillis)
+        assertEquals(paused.completed, currentState().completed)
+        pause.send()
+        await { currentState().phase == Phase.PAUSED }
+        notification.actions.single { it.title == "Stop" }.actionIntent.send()
+        await { currentState().phase == Phase.STOPPED }
+        resume.send()
+        pause.send()
+        SystemClock.sleep(200)
+        assertEquals(Phase.STOPPED, currentState().phase)
+        assertReleased()
+        click()
+        await { currentState().phase == Phase.PLAYING }
+        assertEquals(0L, currentState().completed)
+        assertNull(currentState().pausedAtMillis)
+    }
+
+    @Test fun pausingTheFinalGongWaitsForResumeBeforeCompleting() {
+        configure(1, 1, false)
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal) }
+        click()
+        await { currentState().completed == 1L }
+        pauseOrResume()
+        await { currentState().phase == Phase.PAUSED }
+        val pausedAt = currentState().pausedAtMillis!!
+        assertEquals(0L, displayedSeconds())
+        SystemClock.sleep(TickSound.GONG.completionMillis + 100)
+        assertEquals(Phase.PAUSED, currentState().phase)
+        assertEquals(0L, displayedSeconds())
+        val resumedAt = SystemClock.elapsedRealtime()
+        pauseOrResume()
+        await { currentState().phase == Phase.PLAYING }
+        await { currentState().phase == Phase.COMPLETE }
+        assertTrue(SystemClock.elapsedRealtime() - currentState().startedAtMillis!! >= 1_000 + TickSound.GONG.completionMillis)
+        assertTrue(resumedAt - pausedAt >= TickSound.GONG.completionMillis)
+        assertEquals(1L, currentState().completed)
+        assertReleased()
+    }
+
+    @Test fun rapidPauseResumeCommandsThenStopCannotLeavePendingPlayback() {
+        configure(1, 20, true)
+        click()
+        await { currentState().phase == Phase.PLAYING }
+        instrumentation.runOnMainSync {
+            repeat(20) {
+                service.onStartCommand(Intent().setAction(TickService.ACTION_PAUSE), 0, 0)
+                service.onStartCommand(Intent().setAction(TickService.ACTION_RESUME), 0, 0)
+            }
+            service.onStartCommand(Intent().setAction(TickService.ACTION_PAUSE), 0, 0)
+            service.onStartCommand(Intent().setAction(TickService.ACTION_STOP), 0, 0)
+            service.onStartCommand(Intent().setAction(TickService.ACTION_RESUME), 0, 0)
+        }
+        val completed = currentState().completed
+        SystemClock.sleep(1_100)
+        assertEquals(Phase.STOPPED, currentState().phase)
+        assertEquals(completed, currentState().completed)
+        assertReleased()
+    }
+
     private fun configure(seconds: Int, count: Int, unlimited: Boolean) {
         scenario.onActivity {
             it.findViewById<EditText>(R.id.interval).setText(seconds.toString())
             it.findViewById<EditText>(R.id.repeats).setText(count.toString())
             it.findViewById<Switch>(R.id.unlimited).isChecked = unlimited
         }
+    }
+
+    private fun configureTime(minutes: Int, seconds: Int) = scenario.onActivity {
+        it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.time_mode)
+        it.findViewById<EditText>(R.id.time_minutes).setText(minutes.toString())
+        it.findViewById<EditText>(R.id.time_seconds).setText(seconds.toString())
+    }
+
+    private fun displayedSeconds(): Long = activityValue {
+        it.findViewById<TextView>(R.id.elapsed).text.split(':').fold(0L) { total, part -> total * 60 + part.toLong() }
+    }
+
+    private fun assertTimerMatchesSession() {
+        val state = currentState()
+        val elapsedSeconds = state.elapsedMillis(SystemClock.elapsedRealtime()) / 1_000
+        val duration = state.settings!!.durationSeconds
+        val expected = duration?.let { (it - elapsedSeconds).coerceAtLeast(0) } ?: elapsedSeconds
+        assertTrue("Timer does not match service start time", kotlin.math.abs(displayedSeconds() - expected) <= 1)
     }
 
     private fun startIntent(seconds: Int, count: Int, unlimited: Boolean) =
@@ -474,6 +805,8 @@ class TickAppTest {
     }
 
     private fun requestStop() = scenario.onActivity { it.findViewById<Button>(R.id.stop).performClick() }
+
+    private fun pauseOrResume() = scenario.onActivity { it.findViewById<Button>(R.id.pause_resume).performClick() }
 
     private fun dialogButton(text: String): AccessibilityNodeInfo? {
         val root = instrumentation.uiAutomation.rootInActiveWindow ?: return null

@@ -10,8 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 RATE = 44_100
 # Source, start in seconds, length in milliseconds, tail fade in milliseconds.
 SOUNDS = {
-    "tick": ("clock-original.mp3", 0.23, 300, 60),
-    "gong": ("gong-original.mp3", 0.08, 3_000, 900),
+    "tick": ("clock-original.wav", 1.032, 300, 60),
+    "electric_clock": ("electric-clock-original.mp3", 8.315, 150, 40),
+    "gong": ("gong-original.mp3", 0.0, 3_000, 900),
     "bowl": ("bowl-original.ogg", 0.0, 3_000, 900),
     "bell": ("bell-original.mp3", 0.20, 2_000, 600),
 }
@@ -21,7 +22,7 @@ for name, (source, start, duration, fade) in SOUNDS.items():
         "ffmpeg", "-v", "error", "-i", str(ROOT / "audio-sources" / source),
         "-ac", "1", "-ar", str(RATE),
     ]
-    if name in ("tick", "bell"):
+    if name == "bell":
         # Reduce isolated transients so peak normalization also lifts the audible body.
         command += ["-af", "acompressor=threshold=0.08:ratio=3:attack=0.2:release=60"]
     decoded = subprocess.check_output(command + ["-f", "f32le", "-"])
@@ -35,7 +36,9 @@ for name, (source, start, duration, fade) in SOUNDS.items():
         # A 1 ms attack removes edit clicks without softening the recorded strike.
         attack = min(1.0, index / (RATE * 0.001))
         samples[index] *= attack * (0.5 - 0.5 * math.cos(math.pi * tail))
-    gain = 0.94 / max(abs(value) for value in samples)
+    # The gong needs headroom for ringing tails when intervals are short.
+    peak = 0.45 if name == "gong" else 0.94
+    gain = peak / max(abs(value) for value in samples)
     frames = b"".join(struct.pack("<h", round(value * gain * 32767)) for value in samples)
     output = ROOT / "app/src/main/res/raw" / f"{name}.wav"
     with wave.open(str(output), "wb") as audio:
@@ -44,4 +47,4 @@ for name, (source, start, duration, fade) in SOUNDS.items():
         audio.setframerate(RATE)
         audio.writeframes(frames)
     rms = math.sqrt(sum((value * gain) ** 2 for value in samples) / length)
-    print(f"{name}: {duration} ms, peak -0.54 dBFS, RMS {20 * math.log10(rms):.2f} dBFS, gain {20 * math.log10(gain):+.2f} dB")
+    print(f"{name}: {duration} ms, peak {20 * math.log10(peak):.2f} dBFS, RMS {20 * math.log10(rms):.2f} dBFS, gain {20 * math.log10(gain):+.2f} dB")

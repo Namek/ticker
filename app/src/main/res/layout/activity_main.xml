@@ -10,28 +10,19 @@
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="@string/app_name" android:textSize="28sp" android:textStyle="bold"
                 android:accessibilityHeading="true" tools:targetApi="28" />
+            <RadioGroup android:id="@+id/limit_mode" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:orientation="horizontal">
+                <RadioButton android:id="@+id/count_mode" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:minHeight="48dp" android:text="@string/repeats_label" android:textSize="14sp" />
+                <RadioButton android:id="@+id/time_mode" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:minHeight="48dp" android:text="@string/time_limit_label" android:textSize="14sp" />
+            </RadioGroup>
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="12dp" android:padding="12dp" android:orientation="horizontal"
-                android:gravity="center_vertical" android:baselineAligned="false"
-                android:background="@drawable/panel">
-                <TextView android:id="@+id/status" android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:layout_marginEnd="12dp"
-                    android:text="@string/ready" android:textSize="14sp" android:textColor="@color/accent"
-                    android:accessibilityLiveRegion="polite" />
-                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:orientation="vertical" android:gravity="end">
-                    <TextView android:id="@+id/counter" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:textSize="20sp" android:textStyle="bold" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="@string/completed_label" android:textSize="12sp" android:textColor="@color/muted" />
-                </LinearLayout>
-            </LinearLayout>
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="16dp" android:orientation="horizontal" android:baselineAligned="false">
+                android:layout_marginTop="8dp" android:orientation="horizontal" android:baselineAligned="false">
                 <TextView android:layout_width="0dp" android:layout_height="wrap_content"
                     android:layout_weight="1" android:layout_marginEnd="12dp" android:labelFor="@id/interval"
                     android:text="@string/interval_label" android:textSize="14sp" />
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                <TextView android:id="@+id/limit_label" android:layout_width="0dp" android:layout_height="wrap_content"
                     android:layout_weight="1" android:labelFor="@id/repeats" android:text="@string/repeats_label"
                     android:textSize="14sp" />
             </LinearLayout>
@@ -43,10 +34,37 @@
                     android:nextFocusForward="@id/repeats"
                     android:selectAllOnFocus="true" android:singleLine="true" android:textSize="20sp"
                     android:importantForAutofill="no" />
-                <EditText android:id="@+id/repeats" android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:minHeight="48dp" android:inputType="numberSigned" android:imeOptions="actionDone"
-                    android:selectAllOnFocus="true" android:singleLine="true" android:textSize="20sp"
-                    android:importantForAutofill="no" />
+                <FrameLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
+                    <EditText android:id="@+id/repeats" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:minHeight="48dp" android:inputType="numberSigned" android:imeOptions="actionDone"
+                        android:selectAllOnFocus="true" android:singleLine="true" android:textSize="20sp"
+                        android:importantForAutofill="no" />
+                    <LinearLayout android:id="@+id/time_limit_fields" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:baselineAligned="false" android:visibility="gone">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                            android:layout_marginEnd="8dp" android:orientation="vertical">
+                            <EditText android:id="@+id/time_minutes" android:layout_width="match_parent" android:layout_height="wrap_content"
+                                android:minHeight="48dp" android:inputType="numberSigned" android:imeOptions="actionNext"
+                                android:nextFocusForward="@id/time_seconds" android:selectAllOnFocus="true" android:singleLine="true"
+                                android:textSize="20sp" android:importantForAutofill="no" />
+                            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                                android:text="@string/minutes_short" android:contentDescription="@string/minutes_label"
+                                android:textSize="12sp" android:textColor="@color/muted"
+                                android:labelFor="@id/time_minutes" />
+                        </LinearLayout>
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                            android:orientation="vertical">
+                            <EditText android:id="@+id/time_seconds" android:layout_width="match_parent" android:layout_height="wrap_content"
+                                android:minHeight="48dp" android:inputType="numberSigned" android:imeOptions="actionDone"
+                                android:selectAllOnFocus="true" android:singleLine="true" android:textSize="20sp"
+                                android:importantForAutofill="no" />
+                            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                                android:text="@string/seconds_short" android:contentDescription="@string/seconds_label"
+                                android:textSize="12sp" android:textColor="@color/muted"
+                                android:labelFor="@id/time_seconds" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </FrameLayout>
             </LinearLayout>
             <TextView android:id="@+id/count_help" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="@string/repeat_help" android:textSize="13sp" android:textColor="@color/muted" />
@@ -66,6 +84,10 @@
                 android:layout_marginTop="8dp" android:minHeight="52dp" android:text="@string/start"
                 android:textAllCaps="false" android:textSize="18sp" android:backgroundTint="@color/accent"
                 android:textColor="@color/on_accent" />
+            <TextView android:id="@+id/playback_error" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:text="@string/playback_error" android:textSize="14sp"
+                android:textColor="?android:attr/colorError" android:visibility="gone"
+                android:accessibilityLiveRegion="polite" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="8dp" android:text="@string/audio_help" android:textSize="13sp"
                 android:textColor="@color/muted" />
@@ -77,27 +99,38 @@
     <LinearLayout android:id="@+id/playback_screen" android:layout_width="match_parent" android:layout_height="match_parent"
         android:orientation="vertical" android:padding="24dp" android:visibility="gone">
         <TextView android:id="@+id/playback_status" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:textSize="18sp" android:textColor="@color/accent" android:accessibilityLiveRegion="polite" />
+            android:textSize="14sp" android:textColor="@color/playback_accent" android:accessibilityLiveRegion="polite" />
         <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
             android:fillViewport="true">
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:gravity="center" android:paddingTop="24dp" android:paddingBottom="24dp">
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                <TextView android:id="@+id/timer_label" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:text="@string/elapsed_label" android:labelFor="@id/elapsed" android:gravity="center"
-                    android:textSize="18sp" android:textColor="@color/muted" />
-                <Chronometer android:id="@+id/elapsed" android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:gravity="center" android:textSize="72sp" android:textColor="@color/ink"
-                    android:fontFamily="monospace" android:singleLine="true" android:autoSizeTextType="uniform"
-                    android:autoSizeMinTextSize="24sp" android:autoSizeMaxTextSize="72sp" android:autoSizeStepGranularity="2sp" />
+                    android:textSize="12sp" android:textColor="@color/playback_muted" />
+                <TextView android:id="@+id/elapsed" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:gravity="center" android:textSize="96sp" android:textColor="@android:color/white"
+                    android:fontFamily="monospace" android:maxLines="1" android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="8sp" android:autoSizeMaxTextSize="96sp" android:autoSizeStepGranularity="2sp" />
                 <TextView android:id="@+id/playback_counter" android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp" android:gravity="center" android:textSize="16sp" android:textColor="@color/muted" />
+                    android:layout_marginTop="4dp" android:gravity="center" android:textSize="14sp" android:textColor="@color/playback_muted" />
             </LinearLayout>
         </ScrollView>
         <TextView android:id="@+id/playback_notification_hint" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginBottom="12dp" android:text="@string/notifications_off" android:textSize="14sp"
-            android:textColor="@color/muted" android:visibility="gone" />
-        <Button android:id="@+id/stop" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:minHeight="60dp" android:text="@string/stop" android:textAllCaps="false" android:textSize="20sp"
-            android:backgroundTint="@color/accent" android:textColor="@color/on_accent" />
+            android:textColor="@color/playback_muted" android:visibility="gone" />
+        <!-- Filled buttons keep the primary playback controls visible. -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:baselineAligned="false" tools:ignore="ButtonStyle">
+            <Button android:id="@+id/pause_resume" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:layout_marginEnd="8dp" android:minHeight="60dp"
+                android:paddingStart="8dp" android:paddingEnd="8dp"
+                android:text="@string/pause" android:textAllCaps="false" android:textSize="18sp"
+                android:backgroundTint="@color/playback_panel" android:textColor="@android:color/white" />
+            <Button android:id="@+id/stop" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:minHeight="60dp" android:text="@string/stop"
+                android:paddingStart="8dp" android:paddingEnd="8dp"
+                android:textAllCaps="false" android:textSize="18sp"
+                android:backgroundTint="@color/playback_accent" android:textColor="@android:color/black" />
+        </LinearLayout>
     </LinearLayout>
 </FrameLayout>

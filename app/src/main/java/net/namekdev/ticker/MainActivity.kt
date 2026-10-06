@@ -8,40 +8,48 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.graphics.Color
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.SystemClock
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.ArrayAdapter
-import android.widget.Chronometer
 import android.widget.EditText
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
-import java.text.NumberFormat
 
 @SuppressLint("SetTextI18n") // Editable numbers deliberately use the parser's ungrouped ASCII format.
 class MainActivity : Activity() {
     private lateinit var store: SettingsStore
     private lateinit var interval: EditText
     private lateinit var repeats: EditText
+    private lateinit var minutes: EditText
+    private lateinit var seconds: EditText
+    private lateinit var limitMode: RadioGroup
     private lateinit var unlimited: Switch
     private lateinit var sound: SoundSpinner
     internal val preview by lazy {
         SoundPreview(applicationContext) { Toast.makeText(this, R.string.preview_error, Toast.LENGTH_SHORT).show() }
     }
     private lateinit var button: Button
-    private lateinit var counter: TextView
-    private lateinit var status: TextView
-    private lateinit var elapsed: Chronometer
+    private lateinit var error: TextView
+    private lateinit var elapsed: TextView
     private lateinit var stopButton: Button
+    private lateinit var pauseButton: Button
     private var service: TickService? = null
     private var bound = false
     private var startPending = false
@@ -49,6 +57,16 @@ class MainActivity : Activity() {
     private var session = SessionState()
     private var stopConfirmationPending = false
     private var stopDialog: AlertDialog? = null
+    private var visible = false
+    private val timerHandler = Handler(Looper.getMainLooper())
+    private val timerTick = object : Runnable {
+        override fun run() {
+            updateTimer()
+            if (visible && session.phase == Phase.PLAYING) {
+                timerHandler.postDelayed(this, 1_000 - session.elapsedMillis(SystemClock.elapsedRealtime()) % 1_000)
+            }
+        }
+    }
     private val observer: (SessionState) -> Unit = { state ->
         session = state
         startPending = false
@@ -89,6 +107,9 @@ class MainActivity : Activity() {
         store = SettingsStore(this)
         interval = findViewById(R.id.interval)
         repeats = findViewById(R.id.repeats)
+        minutes = findViewById(R.id.time_minutes)
+        seconds = findViewById(R.id.time_seconds)
+        limitMode = findViewById(R.id.limit_mode)
         unlimited = findViewById(R.id.unlimited)
         sound = findViewById(R.id.sound)
         sound.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item,
@@ -96,10 +117,10 @@ class MainActivity : Activity() {
             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
         button = findViewById(R.id.start_stop)
-        counter = findViewById(R.id.counter)
-        status = findViewById(R.id.status)
+        error = findViewById(R.id.playback_error)
         elapsed = findViewById(R.id.elapsed)
         stopButton = findViewById(R.id.stop)
+        pauseButton = findViewById(R.id.pause_resume)
         stopConfirmationPending = savedInstanceState?.getBoolean("confirm_stop") ?: false
         showSettings(store.load())
 
@@ -109,22 +130,28 @@ class MainActivity : Activity() {
             override fun afterTextChanged(s: Editable?) {
                 if (updatingFields) return
                 validate(interval)
-                if (!unlimited.isChecked) validate(repeats)
+                if (!unlimited.isChecked) {
+                    if (selectedMode() == LimitMode.COUNT) validate(repeats) else validateTime()
+                }
                 saveSettings()
             }
         }
         interval.addTextChangedListener(watcher)
         repeats.addTextChangedListener(watcher)
+        minutes.addTextChangedListener(watcher)
+        seconds.addTextChangedListener(watcher)
+        limitMode.setOnCheckedChangeListener { _, _ ->
+            if (!updatingFields) {
+                restoreInvalidLimits()
+                clearLimitFocus()
+                saveSettings()
+                render()
+            }
+        }
         unlimited.setOnCheckedChangeListener { _, checked ->
             if (!updatingFields) {
-                if (checked && positiveWholeNumber(repeats.text.toString()) == null) {
-                    repeats.setText(store.load().repeatCount.toString())
-                }
-                repeats.error = null
-                if (checked && repeats.hasFocus()) {
-                    repeats.clearFocus()
-                    getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(repeats.windowToken, 0)
-                }
+                restoreInvalidLimits()
+                if (checked) clearLimitFocus()
                 saveSettings()
                 render()
             }
@@ -137,13 +164,23 @@ class MainActivity : Activity() {
         }
         button.setOnClickListener { if (!session.active && !startPending) startPlayback() }
         stopButton.setOnClickListener { showStopConfirmation() }
+        pauseButton.setOnClickListener {
+            val action = when (session.phase) {
+                Phase.PLAYING -> TickService.ACTION_PAUSE
+                Phase.PAUSED -> TickService.ACTION_RESUME
+                else -> return@setOnClickListener
+            }
+            startService(Intent(this, TickService::class.java).setAction(action))
+        }
         render()
     }
 
     override fun onStart() {
         super.onStart()
+        visible = true
         button.isEnabled = false
         stopButton.isEnabled = false
+        pauseButton.isEnabled = false
         bound = bindService(Intent(this, TickService::class.java), connection, BIND_AUTO_CREATE)
     }
 
@@ -153,8 +190,9 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        visible = false
+        timerHandler.removeCallbacks(timerTick)
         preview.stop()
-        elapsed.stop()
         // Keep the pending choice through rotation, without retaining the old window.
         stopDialog?.setOnDismissListener(null)
         stopDialog?.dismiss()
@@ -172,12 +210,17 @@ class MainActivity : Activity() {
     }
 
     private fun showStopConfirmation() {
-        if ((!session.active && !startPending) || stopDialog != null) return
+        if (!session.active && !startPending) return
+        val keep = if (session.phase == Phase.PAUSED) R.string.keep_paused else R.string.keep_ticking
+        stopDialog?.let {
+            it.getButton(AlertDialog.BUTTON_NEGATIVE).setText(keep)
+            return
+        }
         stopConfirmationPending = true
         stopDialog = AlertDialog.Builder(this)
             .setTitle(R.string.confirm_stop_title)
             .setMessage(R.string.confirm_stop_message)
-            .setNegativeButton(R.string.keep_ticking, null)
+            .setNegativeButton(keep, null)
             .setPositiveButton(R.string.stop) { _, _ ->
                 // Use the same command queue as Start to preserve ordering.
                 startService(Intent(this, TickService::class.java).setAction(TickService.ACTION_STOP))
@@ -199,43 +242,78 @@ class MainActivity : Activity() {
         updatingFields = true
         interval.setText(settings.intervalSeconds.toString())
         repeats.setText(settings.repeatCount.toString())
+        minutes.setText((settings.timeLimitSeconds / 60).toString())
+        seconds.setText((settings.timeLimitSeconds % 60).toString())
+        limitMode.check(if (settings.limitMode == LimitMode.TIME) R.id.time_mode else R.id.count_mode)
         unlimited.isChecked = settings.unlimited
         if (sound.selectedItemPosition != settings.sound.ordinal) sound.setSelection(settings.sound.ordinal)
         updatingFields = false
     }
 
     private fun saveSettings() {
-        store.saveValid(interval.text.toString(), repeats.text.toString(), unlimited.isChecked, selectedSound())
+        store.saveValid(interval.text.toString(), repeats.text.toString(), unlimited.isChecked, selectedSound(),
+            selectedMode(), minutes.text.toString(), seconds.text.toString())
     }
 
     private fun selectedSound() = TickSound.entries[sound.selectedItemPosition]
+    private fun selectedMode() = if (limitMode.checkedRadioButtonId == R.id.time_mode) LimitMode.TIME else LimitMode.COUNT
+
+    private fun restoreInvalidLimits() {
+        val saved = store.load()
+        updatingFields = true
+        if (positiveWholeNumber(repeats.text.toString()) == null) repeats.setText(saved.repeatCount.toString())
+        if (timeLimitSeconds(minutes.text.toString(), seconds.text.toString()) == null) {
+            minutes.setText((saved.timeLimitSeconds / 60).toString())
+            seconds.setText((saved.timeLimitSeconds % 60).toString())
+        }
+        listOf(repeats, minutes, seconds).forEach { it.error = null }
+        updatingFields = false
+    }
+
+    private fun clearLimitFocus() {
+        listOf(repeats, minutes, seconds).firstOrNull { it.hasFocus() }?.let {
+            it.clearFocus()
+            getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(it.windowToken, 0)
+        }
+    }
 
     private fun validate(field: EditText): Int? = positiveWholeNumber(field.text.toString()).also {
         field.error = if (it == null) getString(R.string.number_error) else null
     }
 
+    private fun validateTime(): Int? = timeLimitSeconds(minutes.text.toString(), seconds.text.toString()).also {
+        val error = if (it == null) getString(R.string.time_error) else null
+        minutes.error = error
+        seconds.error = error
+    }
+
     private fun startPlayback() {
-        val seconds = validate(interval)
-        val count = if (unlimited.isChecked) store.load().repeatCount else validate(repeats)
-        if (seconds == null || count == null) return
+        val intervalSeconds = validate(interval)
+        val saved = store.load()
+        val mode = selectedMode()
+        val count = if (!unlimited.isChecked && mode == LimitMode.COUNT) validate(repeats) else saved.repeatCount
+        val limit = if (!unlimited.isChecked && mode == LimitMode.TIME) validateTime() else saved.timeLimitSeconds
+        if (intervalSeconds == null || count == null || limit == null) return
         preview.stop()
         saveSettings()
         getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(interval.windowToken, 0)
         startPending = true
         val selectedSound = selectedSound()
-        session = SessionState(Phase.LOADING, settings = TickSettings(seconds, count, unlimited.isChecked, selectedSound))
+        session = SessionState(Phase.LOADING, settings = TickSettings(intervalSeconds, count, unlimited.isChecked, selectedSound, mode, limit))
         render()
         try {
             startForegroundService(Intent(this, TickService::class.java).setAction(TickService.ACTION_START)
-                .putExtra(TickService.EXTRA_INTERVAL, seconds)
+                .putExtra(TickService.EXTRA_INTERVAL, intervalSeconds)
                 .putExtra(TickService.EXTRA_REPEATS, count)
                 .putExtra(TickService.EXTRA_UNLIMITED, unlimited.isChecked)
-                .putExtra(TickService.EXTRA_SOUND, selectedSound.id))
+                .putExtra(TickService.EXTRA_SOUND, selectedSound.id)
+                .putExtra(TickService.EXTRA_TIME_MODE, mode == LimitMode.TIME)
+                .putExtra(TickService.EXTRA_TIME_LIMIT, limit))
         } catch (_: RuntimeException) {
             startPending = false
             session = SessionState(Phase.FAILED)
             render()
-            status.setText(R.string.start_error)
+            error.setText(R.string.start_error)
             return
         }
         if (Build.VERSION.SDK_INT >= 33 && !store.notificationRequested) {
@@ -262,38 +340,82 @@ class MainActivity : Activity() {
 
     private fun render() {
         val active = session.active || startPending
+        renderBackground(active)
         findViewById<View>(R.id.configuration_screen).visibility = if (active) View.GONE else View.VISIBLE
         findViewById<View>(R.id.playback_screen).visibility = if (active) View.VISIBLE else View.GONE
         val canEdit = service != null && !active
+        val timeMode = selectedMode() == LimitMode.TIME
         interval.isEnabled = canEdit
+        interval.nextFocusForwardId = if (timeMode) R.id.time_minutes else R.id.repeats
+        repeats.visibility = if (timeMode) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.time_limit_fields).visibility = if (timeMode) View.VISIBLE else View.GONE
+        findViewById<TextView>(R.id.limit_label).apply {
+            setText(if (timeMode) R.string.time_limit_label else R.string.repeats_label)
+            labelFor = if (timeMode) View.NO_ID else R.id.repeats
+        }
         repeats.isEnabled = canEdit && !unlimited.isChecked
         repeats.alpha = if (repeats.isEnabled) 1f else 0.4f
+        listOf(minutes, seconds).forEach {
+            it.isEnabled = canEdit && !unlimited.isChecked
+            it.alpha = if (it.isEnabled) 1f else 0.4f
+        }
+        listOf(R.id.count_mode, R.id.time_mode).forEach {
+            findViewById<RadioButton>(it).isEnabled = canEdit && !unlimited.isChecked
+        }
         findViewById<TextView>(R.id.count_help).setText(
-            if (unlimited.isChecked) R.string.count_disabled_help else R.string.repeat_help)
+            if (unlimited.isChecked) R.string.count_disabled_help else if (timeMode) R.string.time_limit_help else R.string.repeat_help)
         unlimited.isEnabled = canEdit
         sound.isEnabled = canEdit
         button.isEnabled = service != null
         stopButton.isEnabled = service != null && active
-        if (active) {
-            val base = session.startedAtMillis ?: SystemClock.elapsedRealtime()
-            if (elapsed.base != base) elapsed.base = base
-            if (session.startedAtMillis != null) elapsed.start() else elapsed.stop()
-        } else {
-            elapsed.stop()
+        pauseButton.isEnabled = service != null && (session.phase == Phase.PLAYING || session.phase == Phase.PAUSED)
+        pauseButton.setText(if (session.phase == Phase.PAUSED) R.string.resume else R.string.pause)
+        timerHandler.removeCallbacks(timerTick)
+        if (active) timerTick.run()
+        error.visibility = if (session.phase == Phase.FAILED) View.VISIBLE else View.GONE
+        error.setText(R.string.playback_error)
+        val statusText = when (session.phase) {
+            Phase.LOADING -> getString(R.string.loading)
+            Phase.PLAYING -> getString(R.string.playing)
+            Phase.PAUSED -> getString(R.string.paused)
+            else -> ""
         }
-        counter.text = NumberFormat.getIntegerInstance().format(session.completed)
-        counter.contentDescription = getString(R.string.counter_description, session.completed)
-        findViewById<TextView>(R.id.playback_counter).text = counter.contentDescription
-        val statusText = getString(when (session.phase) {
-            Phase.READY -> R.string.ready
-            Phase.LOADING -> R.string.loading
-            Phase.PLAYING -> R.string.playing
-            Phase.COMPLETE -> R.string.complete
-            Phase.STOPPED -> R.string.stopped
-            Phase.FAILED -> R.string.playback_error
-        })
-        if (status.text != statusText) status.text = statusText
         val playbackStatus = findViewById<TextView>(R.id.playback_status)
         if (playbackStatus.text != statusText) playbackStatus.text = statusText
+    }
+
+    @Suppress("DEPRECATION") // Older Android versions use bar colors and decor flags.
+    private fun renderBackground(active: Boolean) {
+        val background = if (active) Color.BLACK else getColor(R.color.background)
+        // The root also covers the system bar insets on edge-to-edge Android versions.
+        findViewById<View>(R.id.root).setBackgroundColor(background)
+        if (Build.VERSION.SDK_INT < 35) {
+            window.statusBarColor = background
+            window.navigationBarColor = background
+        }
+        if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = !active
+        val lightBars = !active && resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK != Configuration.UI_MODE_NIGHT_YES
+        if (Build.VERSION.SDK_INT >= 30) {
+            val mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            window.insetsController?.setSystemBarsAppearance(if (lightBars) mask else 0, mask)
+        } else {
+            val mask = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            window.decorView.systemUiVisibility = (window.decorView.systemUiVisibility and mask.inv()) or if (lightBars) mask else 0
+        }
+    }
+
+    private fun updateTimer() {
+        val settings = session.settings ?: return
+        val elapsedMillis = session.elapsedMillis(SystemClock.elapsedRealtime())
+        val remaining = settings.remainingSeconds(elapsedMillis)
+        elapsed.text = formatTimer(remaining ?: (elapsedMillis / 1_000))
+        findViewById<TextView>(R.id.timer_label).setText(if (settings.unlimited) R.string.elapsed_label else R.string.remaining_label)
+        findViewById<TextView>(R.id.playback_counter).apply {
+            visibility = if (!settings.unlimited && settings.limitMode == LimitMode.COUNT) View.VISIBLE else View.GONE
+            if (visibility == View.VISIBLE) {
+                val left = (settings.repeatCount - settings.completedIntervals(elapsedMillis)).toInt()
+                text = resources.getQuantityString(R.plurals.intervals_left, left, left)
+            }
+        }
     }
 }

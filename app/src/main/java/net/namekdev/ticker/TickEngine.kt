@@ -13,50 +13,92 @@ class TickEngine(
         private set
     var completed = 0L
         private set
+    // Timer base shifts on Resume so elapsed time excludes pauses.
+    var startedAtMillis = 0L
+        private set
+    var pausedAtMillis: Long? = null
+        private set
     private var generation = 0L
-    private var origin = 0L
+    private var nextAt = 0L
+    private var pending: (() -> Unit)? = null
     private var settings = TickSettings()
 
     fun start(settings: TickSettings) {
         if (running) return
         this.settings = settings
         completed = 0
-        origin = now()
+        startedAtMillis = now()
+        pausedAtMillis = null
         running = true
         generation++
-        tick(generation, first = true)
+        tick(first = true)
     }
 
-    fun stop() {
-        running = false
+    fun pause() {
+        if (!running || pausedAtMillis != null) return
+        pausedAtMillis = now()
         generation++
         cancelScheduled()
     }
 
-    private fun tick(session: Long, first: Boolean = false) {
-        if (!running || session != generation) return
+    fun resume() {
+        val pausedAt = pausedAtMillis ?: return
+        val time = now()
+        val pauseDuration = time - pausedAt
+        startedAtMillis += pauseDuration
+        nextAt += pauseDuration
+        pausedAtMillis = null
+        pending?.let { queue((nextAt - time).coerceAtLeast(0), it) }
+    }
+
+    fun stop() {
+        running = false
+        pausedAtMillis = null
+        pending = null
+        generation++
+        cancelScheduled()
+    }
+
+    private fun queue(delay: Long, action: () -> Unit) {
+        val session = generation
+        nextAt = now() + delay
+        pending = action
+        schedule(delay) {
+            if (!running || pausedAtMillis != null || session != generation) return@schedule
+            pending = null
+            action()
+        }
+    }
+
+    private fun tick(first: Boolean = false) {
+        val elapsed = (now() - startedAtMillis).coerceAtLeast(0)
+        val remaining = settings.remainingSeconds(elapsed)
         if (!play()) {
             stop()
             onFinished(false)
             return
         }
         if (!first) {
-            completed++
+            completed = settings.completedIntervals(elapsed)
             onIntervalCompleted(completed)
         }
-        if (!settings.unlimited && completed == settings.repeatCount.toLong()) {
+        if (remaining == 0L) {
             // The final boundary has its own sound; keep resources until its tail drains.
-            schedule(settings.sound.completionMillis) {
-                if (!running || session != generation) return@schedule
+            queue(settings.sound.completionMillis) {
                 stop()
                 onFinished(true)
             }
         } else {
             // Keep the original phase and queue only one future boundary, skipping missed slots.
             // Sound tails may overlap, but never delay the next interval.
-            val elapsed = now() - origin
-            val delay = settings.intervalMillis - elapsed % settings.intervalMillis
-            schedule(delay) { tick(session) }
+            val gridDelay = settings.intervalMillis - elapsed % settings.intervalMillis
+            // Only convert the small remaining span to milliseconds, avoiding overflow for
+            // very large interval counts. A time limit can end between regular boundaries.
+            val endDelay = if (remaining != null && remaining <= settings.intervalSeconds) {
+                remaining * 1_000 - elapsed % 1_000
+            } else gridDelay
+            val delay = minOf(gridDelay, endDelay)
+            queue(delay) { tick() }
         }
     }
 }

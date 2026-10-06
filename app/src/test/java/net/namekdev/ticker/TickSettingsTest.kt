@@ -20,6 +20,49 @@ class TickSettingsTest {
         listOf(0 to 1, 1 to 0, -1 to 1, 1 to -1).forEach { (interval, count) ->
             assertThrows(IllegalArgumentException::class.java) { TickSettings(interval, count) }
         }
+        assertThrows(IllegalArgumentException::class.java) { TickSettings(timeLimitSeconds = 0) }
+    }
+
+    @Test fun timeLimitAcceptsMinutesAndSecondsWithoutOverflow() {
+        assertEquals(1, timeLimitSeconds("0", "1"))
+        assertEquals(90, timeLimitSeconds("1", "30"))
+        assertEquals(600, timeLimitSeconds(" 10 ", "00"))
+        assertEquals(Int.MAX_VALUE, timeLimitSeconds("35791394", "7"))
+        for ((minutes, seconds) in listOf("" to "1", "0" to "", "0" to "0", "-1" to "0",
+            "1" to "-1", "1.5" to "0", "0" to "60", "2147483648" to "0", "35791394" to "8")) {
+            assertNull("$minutes:$seconds", timeLimitSeconds(minutes, seconds))
+        }
+    }
+
+    @Test fun finiteTimersCountDownToZeroAndClampDuringTheFinalSound() {
+        val settings = TickSettings(10, 3)
+        assertEquals(30L, settings.durationSeconds)
+        assertEquals(30L, settings.remainingSeconds(0))
+        assertEquals(30L, settings.remainingSeconds(999))
+        assertEquals(29L, settings.remainingSeconds(1_000))
+        assertEquals(1L, settings.remainingSeconds(29_999))
+        assertEquals(0L, settings.remainingSeconds(30_000))
+        assertEquals(0L, settings.remainingSeconds(40_000))
+        assertEquals(3L, settings.completedIntervals(40_000))
+        assertEquals(7L, TickSettings(limitMode = LimitMode.TIME, timeLimitSeconds = 7).durationSeconds)
+        assertNull(TickSettings(unlimited = true).remainingSeconds(1_000))
+    }
+
+    @Test fun largestAcceptedIntervalAndCountDoNotOverflowTheCountdown() {
+        val settings = TickSettings(Int.MAX_VALUE, Int.MAX_VALUE)
+        val expected = Int.MAX_VALUE.toLong() * Int.MAX_VALUE
+        assertEquals(expected, settings.durationSeconds)
+        assertEquals(expected - 1, settings.remainingSeconds(1_000))
+        assertFalse(formatTimer(settings.remainingSeconds(1_000)!!).contains('-'))
+    }
+
+    @Test fun timerFormattingIsConciseAndNeverNegative() {
+        assertEquals("00:00", formatTimer(-1))
+        assertEquals("00:00", formatTimer(0))
+        assertEquals("00:09", formatTimer(9))
+        assertEquals("01:30", formatTimer(90))
+        assertEquals("1:00:00", formatTimer(3_600))
+        assertEquals("100:00:01", formatTimer(360_001))
     }
 
     @Test fun bundledAudioMatchesCompletionTiming() {
@@ -38,8 +81,28 @@ class TickSettingsTest {
             val samples = (44 until wav.capacity() step 2).map { wav.getShort(it).toDouble() / 32768 }
             val peak = samples.maxOf { kotlin.math.abs(it) }
             val rms = kotlin.math.sqrt(samples.sumOf { it * it } / samples.size)
-            assertTrue("${sound.id}: strong level without clipping", peak in 0.9..0.96)
+            val peakRange = if (sound == TickSound.GONG) 0.4..0.46 else 0.9..0.96
+            assertTrue("${sound.id}: audible level with output headroom", peak in peakRange)
             assertTrue("${sound.id}: audible recorded body", rms > 0.1)
+        }
+    }
+
+    @Test fun repeatedGongTailsDoNotClipAtShortIntervals() {
+        val wav = java.nio.ByteBuffer.wrap(java.io.File("src/main/res/raw/gong.wav").readBytes())
+            .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val rate = wav.getInt(24)
+        val samples = DoubleArray(wav.getInt(40) / 2) { wav.getShort(44 + it * 2).toDouble() / 32768 }
+        for (seconds in 1..2) {
+            val interval = seconds * rate
+            // A slightly early/late callback can make ringing partials reinforce each other.
+            for (jitterMillis in listOf(-40, 0, 40)) {
+                val starts = listOf(0, interval, 2 * interval + jitterMillis * rate / 1_000)
+                val mix = DoubleArray(samples.size + starts.last())
+                for (start in starts) {
+                    samples.forEachIndexed { index, sample -> mix[start + index] += sample }
+                }
+                assertTrue("Gong tails must leave mixing headroom", mix.maxOf { kotlin.math.abs(it) } < 0.95)
+            }
         }
     }
 

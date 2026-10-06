@@ -11,8 +11,8 @@ android {
         applicationId = "net.namekdev.ticker"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 11
+        versionName = "1.5.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -30,4 +30,9 @@ dependencies {
     androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+}
+
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    // Audio tests read these files directly, outside Gradle's compiled test inputs.
+    inputs.dir("src/main/res/raw")
 }

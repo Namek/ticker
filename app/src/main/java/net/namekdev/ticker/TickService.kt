@@ -20,15 +20,20 @@ import android.os.SystemClock
 import java.io.FileDescriptor
 import java.io.PrintWriter
 
-enum class Phase { READY, LOADING, PLAYING, COMPLETE, STOPPED, FAILED }
+enum class Phase { READY, LOADING, PLAYING, PAUSED, COMPLETE, STOPPED, FAILED }
 
 data class SessionState(
     val phase: Phase = Phase.READY,
     val completed: Long = 0,
     val settings: TickSettings? = null,
     val startedAtMillis: Long? = null,
+    val pausedAtMillis: Long? = null,
 ) {
-    val active: Boolean get() = phase == Phase.LOADING || phase == Phase.PLAYING
+    val active: Boolean get() = phase == Phase.LOADING || phase == Phase.PLAYING || phase == Phase.PAUSED
+
+    fun elapsedMillis(now: Long): Long = startedAtMillis?.let {
+        ((pausedAtMillis ?: now) - it).coerceAtLeast(0)
+    } ?: 0
 }
 
 class TickService : Service() {
@@ -59,10 +64,7 @@ class TickService : Service() {
         },
         onIntervalCompleted = { count ->
             publish(state.copy(completed = count))
-            // The service must keep running even when notification permission is denied.
-            if (getSystemService(NotificationManager::class.java).areNotificationsEnabled()) {
-                getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification())
-            }
+            updateNotification()
         },
         onFinished = { success -> finish(if (success) Phase.COMPLETE else Phase.FAILED) },
     )
@@ -96,22 +98,27 @@ class TickService : Service() {
                 if (!state.active) {
                     val interval = intent.getIntExtra(EXTRA_INTERVAL, 0)
                     val repeats = intent.getIntExtra(EXTRA_REPEATS, 0)
-                    if (interval > 0 && repeats > 0) {
+                    val timeLimit = intent.getIntExtra(EXTRA_TIME_LIMIT, 600)
+                    if (interval > 0 && repeats > 0 && timeLimit > 0) {
                         begin(TickSettings(interval, repeats, intent.getBooleanExtra(EXTRA_UNLIMITED, false),
-                            TickSound.fromId(intent.getStringExtra(EXTRA_SOUND))))
+                            TickSound.fromId(intent.getStringExtra(EXTRA_SOUND)),
+                            if (intent.getBooleanExtra(EXTRA_TIME_MODE, false)) LimitMode.TIME else LimitMode.COUNT,
+                            timeLimit))
                     } else {
                         finish(Phase.FAILED)
                     }
                 }
             }
             ACTION_STOP -> finish(Phase.STOPPED)
-            else -> if (!state.active) stopSelf(startId)
+            ACTION_PAUSE -> pause()
+            ACTION_RESUME -> resume()
         }
+        if (!state.active) stopSelf(startId)
         // Process death and reboot intentionally end the session.
         return START_NOT_STICKY
     }
 
-    @SuppressLint("WakelockTimeout") // Unlimited playback owns this lock until finish/onDestroy.
+    @SuppressLint("WakelockTimeout") // Active playback owns this lock until Pause/finish/onDestroy.
     private fun begin(settings: TickSettings) {
         publish(SessionState(Phase.LOADING, settings = settings))
         try {
@@ -141,13 +148,43 @@ class TickService : Service() {
                 if (status != 0 || loadedSound != soundId) {
                     finish(Phase.FAILED)
                 } else {
-                    publish(state.copy(phase = Phase.PLAYING, startedAtMillis = SystemClock.elapsedRealtime()))
                     engine.start(settings)
+                    if (engine.running) {
+                        publish(state.copy(phase = Phase.PLAYING, startedAtMillis = engine.startedAtMillis))
+                        updateNotification()
+                    }
                 }
             }
             handler.postDelayed(loadTimeout, 10_000)
             soundId = newPool.load(this, settings.sound.audioRes, 1)
             if (soundId == 0) finish(Phase.FAILED)
+        } catch (_: RuntimeException) {
+            finish(Phase.FAILED)
+        }
+    }
+
+    private fun pause() {
+        if (state.phase != Phase.PLAYING) return
+        try {
+            engine.pause()
+            pool?.autoPause()
+            wakeLock?.let { if (it.isHeld) it.release() }
+            publish(state.copy(phase = Phase.PAUSED, pausedAtMillis = engine.pausedAtMillis))
+            updateNotification()
+        } catch (_: RuntimeException) {
+            finish(Phase.FAILED)
+        }
+    }
+
+    @SuppressLint("WakelockTimeout") // Reacquire only for resumed playback; Pause/finish release it.
+    private fun resume() {
+        if (state.phase != Phase.PAUSED) return
+        try {
+            wakeLock?.acquire()
+            pool?.autoResume()
+            engine.resume()
+            publish(state.copy(phase = Phase.PLAYING, startedAtMillis = engine.startedAtMillis, pausedAtMillis = null))
+            updateNotification()
         } catch (_: RuntimeException) {
             finish(Phase.FAILED)
         }
@@ -177,6 +214,12 @@ class TickService : Service() {
         listeners.toList().forEach { it(newState) }
     }
 
+    private fun updateNotification() {
+        // Playback and Pause must also work when notification permission is denied.
+        val manager = getSystemService(NotificationManager::class.java)
+        if (foreground && manager.areNotificationsEnabled()) manager.notify(NOTIFICATION_ID, notification())
+    }
+
     private fun notification(): Notification {
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
@@ -188,9 +231,20 @@ class TickService : Service() {
         )
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.notification_title))
+            .setContentTitle(getString(if (state.phase == Phase.PAUSED) R.string.notification_paused else R.string.notification_title))
             .setContentText(getString(R.string.notification_count, state.completed, state.settings?.intervalSeconds ?: 10))
             .setContentIntent(open)
+            .apply {
+                if (state.phase == Phase.PLAYING || state.phase == Phase.PAUSED) {
+                    val paused = state.phase == Phase.PAUSED
+                    val action = if (paused) ACTION_RESUME else ACTION_PAUSE
+                    val control = PendingIntent.getService(this@TickService, 2,
+                        Intent(this@TickService, TickService::class.java).setAction(action),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    addAction(Notification.Action.Builder(null,
+                        getString(if (paused) R.string.resume else R.string.pause), control).build())
+                }
+            }
             .addAction(Notification.Action.Builder(null, getString(R.string.stop), stop).build())
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -211,17 +265,22 @@ class TickService : Service() {
     }
 
     override fun dump(fd: FileDescriptor?, writer: PrintWriter, args: Array<out String>?) {
-        writer.println("phase=${state.phase} completed=${state.completed} interval=${state.settings?.intervalSeconds} sound=${state.settings?.sound?.id}")
+        writer.println("phase=${state.phase} completed=${state.completed} interval=${state.settings?.intervalSeconds} sound=${state.settings?.sound?.id} limitMode=${state.settings?.limitMode} timeLimit=${state.settings?.timeLimitSeconds}")
         writer.println("wakeLockHeld=${wakeLock?.isHeld == true} soundPoolLoaded=${pool != null} engineRunning=${engine.running} foreground=$foreground")
+        writer.println("paused=${state.phase == Phase.PAUSED} elapsedMillis=${state.elapsedMillis(SystemClock.elapsedRealtime())}")
     }
 
     companion object {
         const val ACTION_START = "net.namekdev.ticker.START"
         const val ACTION_STOP = "net.namekdev.ticker.STOP"
+        const val ACTION_PAUSE = "net.namekdev.ticker.PAUSE"
+        const val ACTION_RESUME = "net.namekdev.ticker.RESUME"
         const val EXTRA_INTERVAL = "interval"
         const val EXTRA_REPEATS = "repeats"
         const val EXTRA_UNLIMITED = "unlimited"
         const val EXTRA_SOUND = "sound"
+        const val EXTRA_TIME_MODE = "time_mode"
+        const val EXTRA_TIME_LIMIT = "time_limit"
         const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "playback"
     }

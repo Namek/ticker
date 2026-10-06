@@ -105,16 +105,88 @@ class TickEngineTest {
         assertTrue(clock.jobs.isEmpty())
     }
 
-    @Test fun delayedCallbackSkipsMissedSlotsWithoutCatchUpOrLosingTheEndSound() {
+    @Test fun delayedCallbackSkipsMissedSlotsAndKeepsTheOriginalDeadline() {
         val clock = Clock()
-        clock.engine.start(TickSettings(10, 3))
+        clock.engine.start(TickSettings(10, 5))
         clock.deliverLate(35_000)
         assertEquals(listOf(0L, 35_000L), clock.ticks)
+        assertEquals(3L, clock.engine.completed)
         assertEquals(40_000L, clock.jobs.single().first)
         clock.advance(50_000 + TickSound.CLOCK.completionMillis)
         assertEquals(listOf(0L, 35_000L, 40_000L, 50_000L), clock.ticks)
+        assertEquals(5L, clock.engine.completed)
+        assertEquals(listOf(true), clock.finishes)
+    }
+
+    @Test fun callbackPastTheCountDeadlinePlaysOnlyTheEndingSound() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(10, 3))
+        clock.deliverLate(35_000)
+        clock.advance(100_000)
+        assertEquals(listOf(0L, 35_000L), clock.ticks)
         assertEquals(3L, clock.engine.completed)
         assertEquals(listOf(true), clock.finishes)
+    }
+
+    @Test fun timeLimitCanEndBetweenRegularIntervals() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(10, 1, limitMode = LimitMode.TIME, timeLimitSeconds = 25))
+        clock.advance(25_000)
+        assertEquals(listOf(0L, 10_000L, 20_000L, 25_000L), clock.ticks)
+        assertEquals(2L, clock.engine.completed)
+        assertTrue(clock.engine.running)
+        clock.advance(25_000 + TickSound.CLOCK.completionMillis)
+        assertEquals(listOf(true), clock.finishes)
+        assertTrue(clock.jobs.isEmpty())
+    }
+
+    @Test fun timeLimitShorterThanOneIntervalStillHasAnEndSound() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(10, 99, limitMode = LimitMode.TIME, timeLimitSeconds = 3))
+        clock.advance(3_000 + TickSound.CLOCK.completionMillis)
+        assertEquals(listOf(0L, 3_000L), clock.ticks)
+        assertEquals(0L, clock.engine.completed)
+        assertEquals(listOf(true), clock.finishes)
+    }
+
+    @Test fun timeLimitOnAnIntervalBoundaryDoesNotDoubleTheEndSound() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(2, 1, limitMode = LimitMode.TIME, timeLimitSeconds = 6))
+        clock.advance(10_000)
+        assertEquals(listOf(0L, 2_000L, 4_000L, 6_000L), clock.ticks)
+        assertEquals(listOf(true), clock.finishes)
+    }
+
+    @Test fun delayedTimeLimitCallbackFinishesWithoutExtendingTheSession() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(2, 99, limitMode = LimitMode.TIME, timeLimitSeconds = 7))
+        clock.deliverLate(10_000)
+        clock.advance(20_000)
+        assertEquals(listOf(0L, 10_000L), clock.ticks)
+        assertEquals(3L, clock.engine.completed)
+        assertEquals(listOf(true), clock.finishes)
+    }
+
+    @Test fun unlimitedIgnoresTheSelectedTimeLimit() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(1, 1, true, limitMode = LimitMode.TIME, timeLimitSeconds = 1))
+        clock.advance(10_000)
+        assertEquals(11, clock.ticks.size)
+        assertTrue(clock.engine.running)
+        assertTrue(clock.finishes.isEmpty())
+    }
+
+    @Test fun stoppingBeforeTheTimeLimitCancelsItsEndSound() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(10, 1, limitMode = LimitMode.TIME, timeLimitSeconds = 3))
+        val staleCallback = clock.jobs.single().second
+        clock.advance(2_999)
+        clock.engine.stop()
+        staleCallback()
+        clock.advance(10_000)
+        assertEquals(listOf(0L), clock.ticks)
+        assertTrue(clock.finishes.isEmpty())
+        assertTrue(clock.jobs.isEmpty())
     }
 
     @Test fun delayedFinalDrainCallbackCannotPlayAnotherSound() {
@@ -214,5 +286,147 @@ class TickEngineTest {
         clock.advance(5_000)
         assertEquals(listOf(0L), clock.ticks)
         assertTrue(clock.finishes.isEmpty())
+    }
+
+    @Test fun pausePreservesTheRemainingFractionOfTheIntervalAndFiniteDeadline() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(2, 2))
+        clock.advance(750)
+        clock.engine.pause()
+        assertEquals(750L, clock.engine.pausedAtMillis)
+        assertTrue(clock.engine.running)
+        assertTrue(clock.jobs.isEmpty())
+        clock.advance(10_750)
+        assertEquals(listOf(0L), clock.ticks)
+        clock.engine.resume()
+        assertNull(clock.engine.pausedAtMillis)
+        assertEquals(10_000L, clock.engine.startedAtMillis)
+        assertEquals(12_000L, clock.jobs.single().first)
+        clock.advance(11_999)
+        assertEquals(listOf(0L), clock.ticks)
+        clock.advance(14_000 + TickSound.CLOCK.completionMillis)
+        assertEquals(listOf(0L, 12_000L, 14_000L), clock.ticks)
+        assertEquals(2L, clock.engine.completed)
+        assertEquals(listOf(true), clock.finishes)
+    }
+
+    @Test fun repeatedPausesExcludeAllPausedTimeInUnlimitedMode() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(1, 1, true))
+        clock.advance(1_300)
+        val staleCallback = clock.jobs.single().second
+        clock.engine.pause()
+        clock.advance(6_300)
+        clock.engine.pause() // Duplicate commands must not replace the pause time.
+        clock.engine.start(TickSettings(10, 1))
+        assertEquals(1_300L, clock.engine.pausedAtMillis)
+        clock.engine.resume()
+        clock.engine.resume()
+        staleCallback()
+        assertEquals(1, clock.jobs.size)
+        clock.advance(7_200)
+        clock.engine.pause()
+        clock.advance(9_200)
+        clock.engine.resume()
+        clock.advance(10_000)
+        assertEquals(7_000L, clock.engine.startedAtMillis)
+        assertEquals(listOf(0L, 1_000L, 7_000L, 10_000L), clock.ticks)
+        assertEquals(3L, clock.engine.completed)
+        assertTrue(clock.engine.running)
+        assertTrue(clock.finishes.isEmpty())
+    }
+
+    @Test fun pausedTimeLimitStillEndsBetweenIntervalsWithoutAnExtraResumeSound() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(2, 99, limitMode = LimitMode.TIME, timeLimitSeconds = 3))
+        clock.advance(2_800)
+        clock.engine.pause()
+        clock.advance(12_800)
+        clock.engine.resume()
+        assertEquals(listOf(0L, 2_000L), clock.ticks)
+        clock.advance(13_000 + TickSound.CLOCK.completionMillis)
+        assertEquals(listOf(0L, 2_000L, 13_000L), clock.ticks)
+        assertEquals(1L, clock.engine.completed)
+        assertEquals(listOf(true), clock.finishes)
+    }
+
+    @Test fun pausingTheEndingGongPreservesItsRemainingTail() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(1, 1, sound = TickSound.GONG))
+        clock.advance(1_800)
+        val staleCompletion = clock.jobs.single().second
+        clock.engine.pause()
+        clock.advance(11_800)
+        staleCompletion()
+        assertTrue(clock.finishes.isEmpty())
+        clock.engine.resume()
+        staleCompletion()
+        val end = 11_000 + TickSound.GONG.completionMillis
+        clock.advance(end - 1)
+        assertTrue(clock.engine.running)
+        clock.advance(end)
+        assertEquals(listOf(0L, 1_000L), clock.ticks)
+        assertEquals(listOf(true), clock.finishes)
+        assertTrue(clock.jobs.isEmpty())
+    }
+
+    @Test fun stopWhilePausedCannotResumeAndAnotherStartIsFresh() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(1, 1, sound = TickSound.GONG))
+        clock.advance(1_500)
+        val staleCompletion = clock.jobs.single().second
+        clock.engine.pause()
+        clock.engine.stop()
+        clock.advance(20_000)
+        clock.engine.resume()
+        assertFalse(clock.engine.running)
+        assertNull(clock.engine.pausedAtMillis)
+        assertTrue(clock.jobs.isEmpty())
+        clock.engine.start(TickSettings(2, 1))
+        staleCompletion()
+        clock.advance(22_000 + TickSound.CLOCK.completionMillis)
+        assertEquals(listOf(0L, 1_000L, 20_000L, 22_000L), clock.ticks)
+        assertEquals(listOf(true), clock.finishes)
+    }
+
+    @Test fun pauseAndResumeBeforeStartDoNothing() {
+        val clock = Clock()
+        clock.engine.pause()
+        clock.engine.resume()
+        assertFalse(clock.engine.running)
+        assertNull(clock.engine.pausedAtMillis)
+        assertTrue(clock.jobs.isEmpty())
+        assertTrue(clock.ticks.isEmpty())
+    }
+
+    @Test fun anOverdueCallbackAfterResumeStillSkipsMissedSlotsWithoutABurst() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(1, 10))
+        clock.time = 3_400 // The main loop has not delivered the first boundary yet.
+        clock.engine.pause()
+        clock.advance(8_400)
+        clock.engine.resume()
+        clock.deliverLate(9_200) // Resume's immediate callback is also delayed.
+        assertEquals(listOf(0L, 9_200L), clock.ticks)
+        assertEquals(4L, clock.engine.completed)
+        assertEquals(10_000L, clock.jobs.single().first)
+        clock.advance(15_000 + TickSound.CLOCK.completionMillis)
+        assertEquals(10L, clock.engine.completed)
+        assertEquals(listOf(true), clock.finishes)
+    }
+
+    @Test fun playbackFailureAfterResumeReleasesThePendingSession() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(1, 2))
+        clock.advance(900)
+        clock.engine.pause()
+        clock.advance(2_900)
+        clock.canPlay = false
+        clock.engine.resume()
+        clock.advance(3_000)
+        assertEquals(listOf(0L), clock.ticks)
+        assertEquals(listOf(false), clock.finishes)
+        assertFalse(clock.engine.running)
+        assertTrue(clock.jobs.isEmpty())
     }
 }

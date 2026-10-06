@@ -41,7 +41,7 @@ def wait_for(check, timeout=15):
 
 
 def tree():
-    # A native test-only probe reads the tree while the elapsed timer updates every second.
+    # A native test-only probe reads the tree while the timer updates every second.
     output = shell("am", "instrument", "-w", "net.namekdev.ticker.test/net.namekdev.ticker.UiProbe")
     match = re.search(r"^INSTRUMENTATION_RESULT: hierarchy=(.*)$", output, re.M)
     assert match is not None, output
@@ -92,6 +92,17 @@ def count():
     return int(match[1]) if match else 0
 
 
+def elapsed_millis():
+    match = re.search(r"elapsedMillis=(\d+)", dump())
+    assert match is not None
+    return int(match[1])
+
+
+def timer_at_zero():
+    item = node(resource=PACKAGE + ":id/elapsed")
+    return item is not None and item.get("text") == "00:00"
+
+
 def is_idle():
     output = dump()
     return "foreground=true" not in output and "engineRunning=true" not in output
@@ -103,6 +114,15 @@ def assert_released():
     if "phase=" in output:
         assert "wakeLockHeld=false soundPoolLoaded=false engineRunning=false foreground=false" in output, output
     # dumpsys also includes old acquire/release events; inspect only current locks.
+    locks = re.search(r"Wake Locks:.*?(?=\nSuspend Blockers:)", shell("dumpsys", "power"), re.S)
+    assert locks is not None
+    assert "Tick:playback" not in locks[0], locks[0]
+
+
+def assert_paused():
+    output = dump()
+    assert "phase=PAUSED" in output, output
+    assert "wakeLockHeld=false soundPoolLoaded=true engineRunning=true foreground=true" in output, output
     locks = re.search(r"Wake Locks:.*?(?=\nSuspend Blockers:)", shell("dumpsys", "power"), re.S)
     assert locks is not None
     assert "Tick:playback" not in locks[0], locks[0]
@@ -133,7 +153,7 @@ tap_id("unlimited")
 assert find(resource=PACKAGE + ":id/repeats").get("enabled") == "false"
 tap_id("sound")
 options = {item.get("text") for item in tree().iter("node")}
-assert {"Clock tick", "Gong", "Singing bowl", "Soft bell"} <= options, options
+assert {"Clock tick", "Electric wall clock", "Gong", "Singing bowl", "Soft bell"} <= options, options
 tap(find(text="Gong"))
 tap_id("start_stop")
 find(resource="com.android.permissioncontroller:id/permission_deny_button")
@@ -144,7 +164,32 @@ wait_for(lambda: count() >= 2)
 assert "sound=gong" in dump()
 assert "granted=false" in shell("dumpsys", "package", PACKAGE).split(PERMISSION + ":")[-1].splitlines()[0]
 find(text="Notifications are off. You can stop playback here.")
-print("PASS: Interval count is disabled in Unlimited; dropdown offers four sounds; Gong plays after notification permission denial.", flush=True)
+print("PASS: Interval count is disabled in Unlimited; dropdown offers five sounds; Gong plays after notification permission denial.", flush=True)
+
+tap_id("pause_resume")
+wait_for(lambda: "phase=PAUSED" in dump())
+assert_paused()
+paused_time, paused_count = elapsed_millis(), count()
+paused_display = find(resource=PACKAGE + ":id/elapsed").get("text")
+find(text="Resume")
+shell("input", "keyevent", "KEYCODE_BACK")
+shell("input", "keyevent", "KEYCODE_SLEEP")
+time.sleep(3.2)
+assert "mWakefulness=Asleep" in shell("dumpsys", "power")
+assert_paused()
+assert elapsed_millis() == paused_time
+assert count() == paused_count
+launch()
+assert find(resource=PACKAGE + ":id/elapsed").get("text") == paused_display
+find(text="Resume")
+tap_id("stop")
+tap(find(text="Keep paused"))
+assert_paused()
+tap_id("pause_resume")
+wait_for(lambda: "phase=PLAYING" in dump())
+assert "wakeLockHeld=true" in dump()
+wait_for(lambda: count() > paused_count)
+print("PASS: Pause freezes elapsed time and intervals with notifications denied, releases the wake lock, survives closing and screen lock, and resumes after reopening.", flush=True)
 
 before = count()
 elapsed_before = find(resource=PACKAGE + ":id/elapsed").get("text")
@@ -181,15 +226,31 @@ stop = next((item for item in tick_row.iter("node") if item.get("text", "").case
 if stop is None:
     expand = next(item for item in tick_row.iter("node") if item.get("resource-id") == "android:id/expand_button")
     tap(expand)
-    stop = find(text="Stop")
-tap(stop)
+    find(text="Stop")
+tap(find(text="Pause"))
+wait_for(lambda: "phase=PAUSED" in dump())
+find(text="Tick is paused")
+assert_paused()
+paused_time, paused_count = elapsed_millis(), count()
+time.sleep(2.2)
+assert elapsed_millis() == paused_time
+assert count() == paused_count
+tap(find(text="Resume"))
+wait_for(lambda: "phase=PLAYING" in dump())
+wait_for(lambda: count() > paused_count)
+find(text="Tick is running")
+tap(find(text="Pause"))
+wait_for(lambda: "phase=PAUSED" in dump())
+tap(find(text="Stop"))
 assert_released()
 shell("cmd", "statusbar", "collapse")
-print("PASS: the Stop button in the notification shade cancels playback.", flush=True)
+print("PASS: notification Pause/Resume freezes and continues the session; notification Stop cancels a paused session.", flush=True)
 
 launch()
 tap_id("start_stop")
 wait_for(lambda: count() >= 1)
+tap_id("pause_resume")
+wait_for(lambda: "phase=PAUSED" in dump())
 pid = shell("pidof", PACKAGE).strip()
 shell("run-as", PACKAGE, "kill", "-9", pid)
 time.sleep(1)
@@ -200,8 +261,8 @@ assert find(resource=PACKAGE + ":id/repeats").get("text") == "7"
 assert find(resource=PACKAGE + ":id/unlimited").get("checked") == "true"
 assert find(resource=PACKAGE + ":id/repeats").get("enabled") == "false"
 find(text="Gong")
-assert find(resource=PACKAGE + ":id/counter").get("text") == "0"
-print("PASS: process termination ends playback and retains settings.", flush=True)
+assert count() == 0
+print("PASS: process termination ends a paused session and retains settings.", flush=True)
 
 tap_id("start_stop")
 wait_for(lambda: count() >= 1)
@@ -216,5 +277,58 @@ assert find(resource=PACKAGE + ":id/repeats").get("text") == "7"
 assert find(resource=PACKAGE + ":id/unlimited").get("checked") == "true"
 assert find(resource=PACKAGE + ":id/repeats").get("enabled") == "false"
 find(text="Gong")
-assert find(resource=PACKAGE + ":id/counter").get("text") == "0"
-print("PASS: reboot ends playback and retains settings. All ADB checks passed.", flush=True)
+assert count() == 0
+print("PASS: reboot ends playback and retains settings.", flush=True)
+
+tap_id("unlimited")
+tap_id("time_mode")
+set_number("interval", 4)
+set_number("time_minutes", 0)
+set_number("time_seconds", 11)
+tap_id("start_stop")
+snapshot = tree()
+assert any(item.get("text") == "Time left" for item in snapshot.iter("node"))
+assert not any(item.get("resource-id") == PACKAGE + ":id/playback_counter" for item in snapshot.iter("node"))
+tap_id("pause_resume")
+wait_for(lambda: "phase=PAUSED" in dump())
+paused_time = elapsed_millis()
+paused_display = find(resource=PACKAGE + ":id/elapsed").get("text")
+time.sleep(2.2)
+assert_paused()
+assert elapsed_millis() == paused_time
+assert find(resource=PACKAGE + ":id/elapsed").get("text") == paused_display
+tap_id("pause_resume")
+wait_for(lambda: "phase=PLAYING" in dump())
+time_before = find(resource=PACKAGE + ":id/elapsed").get("text")
+assert "limitMode=TIME timeLimit=11" in dump()
+shell("input", "keyevent", "KEYCODE_SLEEP")
+time.sleep(4.2)
+assert "wakeLockHeld=true" in dump()
+launch()
+time_after = find(resource=PACKAGE + ":id/elapsed").get("text")
+assert time_after < time_before, (time_before, time_after)
+wait_for(timer_at_zero)
+assert "phase=PLAYING" in dump()
+assert_released()
+assert count() == 2, dump()
+find(resource=PACKAGE + ":id/start_stop")
+print("PASS: time limit counts down with the screen off, omits intervals left, plays its off-grid ending cue, and releases resources.", flush=True)
+
+shell("am", "force-stop", PACKAGE)
+launch()
+assert find(resource=PACKAGE + ":id/time_mode").get("checked") == "true"
+assert find(resource=PACKAGE + ":id/time_seconds").get("text") == "11"
+tap_id("count_mode")
+assert find(resource=PACKAGE + ":id/repeats").get("text") == "7"
+tap_id("start_stop")
+time_before = find(resource=PACKAGE + ":id/elapsed").get("text")
+remaining_before = find(resource=PACKAGE + ":id/playback_counter").get("text")
+assert remaining_before.endswith("intervals left"), remaining_before
+time.sleep(1.2)
+assert find(resource=PACKAGE + ":id/elapsed").get("text") < time_before
+tap_id("stop")
+tap(find(resource="android:id/button1"))
+assert_released()
+tap_id("time_mode")
+assert find(resource=PACKAGE + ":id/time_seconds").get("text") == "11"
+print("PASS: count mode shows remaining time and intervals; switching modes preserves both limits. All ADB checks passed.", flush=True)
