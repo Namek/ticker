@@ -1,0 +1,8 @@
+<resources>
+    <dimen name="setup_padding">16dp</dimen>
+    <dimen name="setup_title_size">28sp</dimen>
+    <dimen name="setup_gap">8dp</dimen>
+    <dimen name="timer_size">96sp</dimen>
+    <dimen name="timer_vertical_padding">24dp</dimen>
+    <dimen name="interval_spacing">32dp</dimen>
+</resources>

@@ -18,6 +18,7 @@ class SoundPreview(private val context: Context, private val onFailure: () -> Un
 
     fun play(sound: TickSound) {
         stop()
+        if (sound == TickSound.NONE) return
         this.sound = sound
         try {
             val newPool = SoundPool.Builder().setMaxStreams(1).setAudioAttributes(

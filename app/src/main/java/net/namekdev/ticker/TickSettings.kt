@@ -1,14 +1,17 @@
 package net.namekdev.ticker
 
+const val INTERVAL_FLASH_MILLIS = 300L
+
 enum class TickSound(val id: String, val labelRes: Int, val audioRes: Int, val durationMillis: Long) {
+    NONE("none", R.string.sound_none, 0, 0),
     CLOCK("tick", R.string.sound_clock, R.raw.tick, 300),
     ELECTRIC_CLOCK("electric_clock", R.string.sound_electric_clock, R.raw.electric_clock, 150),
     GONG("gong", R.string.sound_gong, R.raw.gong, 3_000),
     BOWL("bowl", R.string.sound_bowl, R.raw.bowl, 3_000),
     BELL("bell", R.string.sound_bell, R.raw.bell, 2_000);
 
-    // SoundPool has no completion callback. Leave time for the output buffer to drain.
-    val completionMillis: Long get() = durationMillis + 200L
+    // Silent sessions still leave the final flash visible. Audio also needs an output drain margin.
+    val completionMillis: Long get() = if (this == NONE) INTERVAL_FLASH_MILLIS else durationMillis + 200L
 
     companion object {
         fun fromId(id: String?): TickSound = entries.firstOrNull { it.id == id } ?: CLOCK
@@ -40,6 +43,11 @@ data class TickSettings(
 
     fun remainingSeconds(elapsedMillis: Long): Long? =
         durationSeconds?.let { (it - elapsedMillis.coerceAtLeast(0) / 1_000).coerceAtLeast(0) }
+
+    fun intervalRemainingSeconds(elapsedMillis: Long): Long {
+        val untilBoundary = intervalSeconds - elapsedMillis.coerceAtLeast(0) / 1_000 % intervalSeconds
+        return minOf(untilBoundary, remainingSeconds(elapsedMillis) ?: untilBoundary)
+    }
 
     fun completedIntervals(elapsedMillis: Long): Long {
         val seconds = elapsedMillis.coerceAtLeast(0) / 1_000

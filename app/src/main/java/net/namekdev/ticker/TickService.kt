@@ -28,6 +28,7 @@ data class SessionState(
     val settings: TickSettings? = null,
     val startedAtMillis: Long? = null,
     val pausedAtMillis: Long? = null,
+    val lastIntervalAtMillis: Long? = null,
 ) {
     val active: Boolean get() = phase == Phase.LOADING || phase == Phase.PLAYING || phase == Phase.PAUSED
 
@@ -56,14 +57,14 @@ class TickService : Service() {
         schedule = { delay, action -> handler.postDelayed(action, delay) },
         cancelScheduled = { handler.removeCallbacksAndMessages(null) },
         play = {
-            try {
+            if (state.settings?.sound == TickSound.NONE) true else try {
                 (pool?.play(soundId, 1f, 1f, 1, 0, 1f) ?: 0) != 0
             } catch (_: RuntimeException) {
                 false
             }
         },
         onIntervalCompleted = { count ->
-            publish(state.copy(completed = count))
+            publish(state.copy(completed = count, lastIntervalAtMillis = SystemClock.elapsedRealtime()))
             updateNotification()
         },
         onFinished = { success -> finish(if (success) Phase.COMPLETE else Phase.FAILED) },
@@ -133,6 +134,10 @@ class TickService : Service() {
                     setReferenceCounted(false)
                     acquire()
                 }
+            if (settings.sound == TickSound.NONE) {
+                startEngine(settings)
+                return
+            }
             // Three-second recordings can ring across the minimum one-second interval.
             val newPool = SoundPool.Builder().setMaxStreams(4).setAudioAttributes(
                 AudioAttributes.Builder()
@@ -148,11 +153,7 @@ class TickService : Service() {
                 if (status != 0 || loadedSound != soundId) {
                     finish(Phase.FAILED)
                 } else {
-                    engine.start(settings)
-                    if (engine.running) {
-                        publish(state.copy(phase = Phase.PLAYING, startedAtMillis = engine.startedAtMillis))
-                        updateNotification()
-                    }
+                    startEngine(settings)
                 }
             }
             handler.postDelayed(loadTimeout, 10_000)
@@ -163,13 +164,21 @@ class TickService : Service() {
         }
     }
 
+    private fun startEngine(settings: TickSettings) {
+        engine.start(settings)
+        if (engine.running) {
+            publish(state.copy(phase = Phase.PLAYING, startedAtMillis = engine.startedAtMillis))
+            updateNotification()
+        }
+    }
+
     private fun pause() {
         if (state.phase != Phase.PLAYING) return
         try {
             engine.pause()
             pool?.autoPause()
             wakeLock?.let { if (it.isHeld) it.release() }
-            publish(state.copy(phase = Phase.PAUSED, pausedAtMillis = engine.pausedAtMillis))
+            publish(state.copy(phase = Phase.PAUSED, pausedAtMillis = engine.pausedAtMillis, lastIntervalAtMillis = null))
             updateNotification()
         } catch (_: RuntimeException) {
             finish(Phase.FAILED)

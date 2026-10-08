@@ -1,11 +1,18 @@
 <resources>
-    <color name="background">#FAFAF7</color>
-    <color name="ink">#1B281F</color>
-    <color name="muted">#526054</color>
-    <color name="accent">#25603C</color>
+    <color name="background">#F6F8F4</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_muted">#E7EDE5</color>
+    <color name="outline">#82917F</color>
+    <color name="ink">#19271E</color>
+    <color name="muted">#536356</color>
+    <color name="accent">#28613F</color>
     <color name="on_accent">#FFFFFF</color>
-    <!-- Playback always uses a black background, including in the light theme. -->
+    <color name="icon_background">#28613F</color>
+    <!-- Playback uses black between brief interval flashes, including in the light theme. -->
     <color name="playback_panel">#222E25</color>
     <color name="playback_muted">#B7C7B9</color>
     <color name="playback_accent">#9ED4AC</color>
+    <!-- Brightness makes both cues visible when the display removes color. -->
+    <color name="interval_flash">#88585C</color>
+    <color name="completion_flash">#50785C</color>
 </resources>

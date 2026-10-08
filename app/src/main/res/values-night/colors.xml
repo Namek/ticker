@@ -1,5 +1,8 @@
 <resources>
-    <color name="background">#141B16</color>
+    <color name="background">#121A15</color>
+    <color name="surface">#1C2920</color>
+    <color name="surface_muted">#26352B</color>
+    <color name="outline">#738A79</color>
     <color name="ink">#EDF4EC</color>
     <color name="muted">#B7C7B9</color>
     <color name="accent">#9ED4AC</color>

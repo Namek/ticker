@@ -54,6 +54,21 @@ class TickSettingsTest {
         assertEquals(expected, settings.durationSeconds)
         assertEquals(expected - 1, settings.remainingSeconds(1_000))
         assertFalse(formatTimer(settings.remainingSeconds(1_000)!!).contains('-'))
+        assertEquals(Int.MAX_VALUE.toLong(), settings.intervalRemainingSeconds(0))
+    }
+
+    @Test fun intervalCountdownResetsAtBoundariesAndClampsToTheFinalPartialInterval() {
+        val count = TickSettings(10, 3)
+        for ((elapsed, left) in listOf(-1L to 10L, 0L to 10L, 999L to 10L, 1_000L to 9L,
+            9_999L to 1L, 10_000L to 10L, 29_999L to 1L, 30_000L to 0L, 40_000L to 0L)) {
+            assertEquals("elapsed=$elapsed", left, count.intervalRemainingSeconds(elapsed))
+        }
+        assertEquals(10L, count.copy(unlimited = true).intervalRemainingSeconds(40_000))
+        val time = count.copy(limitMode = LimitMode.TIME, timeLimitSeconds = 25)
+        assertEquals(5L, time.intervalRemainingSeconds(20_000))
+        assertEquals(1L, time.intervalRemainingSeconds(24_999))
+        assertEquals(0L, time.intervalRemainingSeconds(25_000))
+        assertEquals(3L, time.copy(timeLimitSeconds = 3).intervalRemainingSeconds(0))
     }
 
     @Test fun timerFormattingIsConciseAndNeverNegative() {
@@ -66,7 +81,7 @@ class TickSettingsTest {
     }
 
     @Test fun bundledAudioMatchesCompletionTiming() {
-        for (sound in TickSound.entries) {
+        for (sound in TickSound.entries.filter { it != TickSound.NONE }) {
             val wav = java.nio.ByteBuffer.wrap(java.io.File("src/main/res/raw/${sound.id}.wav").readBytes())
                 .order(java.nio.ByteOrder.LITTLE_ENDIAN)
             assertEquals("RIFF", String(wav.array(), 0, 4, Charsets.US_ASCII))

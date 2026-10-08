@@ -8,6 +8,8 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -17,8 +19,9 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.RadioGroup
-import android.widget.Switch
+import android.widget.RadioButton
 import android.widget.Spinner
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -74,6 +77,7 @@ class TickAppTest {
 
     @Test fun defaultsValidationAndAutomaticSettingsRestoration() {
         assertEquals(TickSettings(), SettingsStore(context).load())
+        assertEquals(R.id.count_mode, activityValue { it.findViewById<RadioGroup>(R.id.limit_mode).checkedRadioButtonId })
         assertFalse(activityValue { it.findViewById<View>(R.id.playback_error).isShown })
         scenario.onActivity { activity ->
             val interval = activity.findViewById<EditText>(R.id.interval)
@@ -86,23 +90,60 @@ class TickAppTest {
             }
             interval.setText("7")
             repeats.setText("13")
-            activity.findViewById<Switch>(R.id.unlimited).isChecked = true
+            activity.findViewById<RadioButton>(R.id.unlimited).isChecked = true
             assertFalse(repeats.isEnabled)
-            assertTrue(repeats.alpha < 1f)
+            assertFalse(repeats.isShown)
         }
         assertEquals(TickSettings(7, 13, true), SettingsStore(context).load())
         scenario.recreate()
         assertEquals("7", activityValue { it.findViewById<EditText>(R.id.interval).text.toString() })
         assertEquals("13", activityValue { it.findViewById<EditText>(R.id.repeats).text.toString() })
-        assertTrue(activityValue { it.findViewById<Switch>(R.id.unlimited).isChecked })
+        assertTrue(activityValue { it.findViewById<RadioButton>(R.id.unlimited).isChecked })
         assertFalse(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
         scenario.close()
         scenario = ActivityScenario.launch(MainActivity::class.java)
         assertEquals("13", activityValue { it.findViewById<EditText>(R.id.repeats).text.toString() })
         assertFalse(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
-        scenario.onActivity { it.findViewById<Switch>(R.id.unlimited).isChecked = false }
+        scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.count_mode) }
         assertTrue(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
-        assertEquals(1f, activityValue { it.findViewById<EditText>(R.id.repeats).alpha })
+        assertTrue(activityValue { it.findViewById<EditText>(R.id.repeats).isShown })
+    }
+
+    @Test fun settingsFitWithoutScrollingInPortraitAndLandscape() {
+        for ((requested, expected) in listOf(
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT to Configuration.ORIENTATION_PORTRAIT,
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE to Configuration.ORIENTATION_LANDSCAPE,
+        )) {
+            scenario.onActivity { it.requestedOrientation = requested }
+            await { activityValue { it.resources.configuration.orientation == expected } }
+            for (mode in listOf(R.id.count_mode, R.id.time_mode, R.id.unlimited)) {
+                scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(mode) }
+                instrumentation.waitForIdleSync()
+                assertFalse("Settings require scrolling in orientation $expected, mode $mode", activityValue {
+                    val screen = it.findViewById<ScrollView>(R.id.configuration_screen)
+                    screen.canScrollVertically(1) || screen.canScrollVertically(-1)
+                })
+            }
+        }
+    }
+
+    @Test fun durationPreviewFollowsValidEditsModesAndRestoration() {
+        fun preview() = activityValue { it.findViewById<TextView>(R.id.duration_preview).text.toString() }
+        assertEquals("01:40", preview())
+        configure(7, 13, false)
+        assertEquals("01:31", preview())
+        configureTime(2, 5)
+        assertEquals("02:05", preview())
+        scenario.onActivity { it.findViewById<EditText>(R.id.time_seconds).setText("60") }
+        assertEquals(context.getString(R.string.duration_invalid), preview())
+        scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.unlimited) }
+        assertEquals(context.getString(R.string.no_time_limit), preview())
+        scenario.onActivity { it.findViewById<EditText>(R.id.interval).setText("") }
+        assertEquals(context.getString(R.string.duration_invalid), preview())
+        configure(Int.MAX_VALUE, Int.MAX_VALUE, false)
+        assertEquals(formatTimer(Int.MAX_VALUE.toLong() * Int.MAX_VALUE), preview())
+        scenario.recreate()
+        assertEquals(formatTimer(Int.MAX_VALUE.toLong() * Int.MAX_VALUE), preview())
     }
 
     @Test fun invalidEditsNeverReplaceSavedValidValues() {
@@ -125,7 +166,7 @@ class TickAppTest {
         assertTrue(activityValue { it.findViewById<View>(R.id.playback_screen).isShown })
         assertFalse(activityValue { it.findViewById<View>(R.id.configuration_screen).isShown })
         assertFalse(activityValue { it.findViewById<EditText>(R.id.interval).isEnabled })
-        assertFalse(activityValue { it.findViewById<Switch>(R.id.unlimited).isEnabled })
+        assertFalse(activityValue { it.findViewById<RadioButton>(R.id.unlimited).isEnabled })
         await { currentState().phase == Phase.COMPLETE }
         assertEquals(3L, currentState().completed)
         assertFalse(activityValue { it.findViewById<View>(R.id.playback_error).isShown })
@@ -259,10 +300,10 @@ class TickAppTest {
         configure(1, 17, false)
         scenario.onActivity {
             it.findViewById<EditText>(R.id.repeats).setText("")
-            it.findViewById<Switch>(R.id.unlimited).isChecked = true
+            it.findViewById<RadioButton>(R.id.unlimited).isChecked = true
         }
         assertEquals(TickSettings(1, 17, true), SettingsStore(context).load())
-        scenario.onActivity { it.findViewById<Switch>(R.id.unlimited).isChecked = false }
+        scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.count_mode) }
         assertEquals("17", activityValue { it.findViewById<EditText>(R.id.repeats).text.toString() })
         assertTrue(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
     }
@@ -304,27 +345,36 @@ class TickAppTest {
     @Test fun bothLimitsAndSelectedModeSurviveRotationReopeningAndUnlimited() {
         configure(7, 13, false)
         configureTime(1, 25)
-        val saved = TickSettings(7, 13, false, limitMode = LimitMode.TIME, timeLimitSeconds = 85)
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal) }
+        val saved = TickSettings(7, 13, false, TickSound.NONE, LimitMode.TIME, 85)
         assertEquals(saved, SettingsStore(context).load())
         scenario.recreate()
         assertEquals(R.id.time_mode, activityValue { it.findViewById<RadioGroup>(R.id.limit_mode).checkedRadioButtonId })
         assertEquals("1", activityValue { it.findViewById<EditText>(R.id.time_minutes).text.toString() })
         assertEquals("25", activityValue { it.findViewById<EditText>(R.id.time_seconds).text.toString() })
         assertFalse(activityValue { it.findViewById<View>(R.id.repeats).isShown })
-        scenario.onActivity { it.findViewById<Switch>(R.id.unlimited).isChecked = true }
-        for (id in listOf(R.id.time_minutes, R.id.time_seconds, R.id.count_mode, R.id.time_mode)) {
+        scenario.onActivity { it.findViewById<RadioButton>(R.id.unlimited).isChecked = true }
+        for (id in listOf(R.id.time_minutes, R.id.time_seconds)) {
             assertFalse(activityValue { it.findViewById<View>(id).isEnabled })
         }
+        for (id in listOf(R.id.repeats, R.id.time_limit_fields, R.id.limit_label)) {
+            assertFalse(activityValue { it.findViewById<View>(id).isShown })
+        }
+        for (id in listOf(R.id.unlimited, R.id.count_mode, R.id.time_mode)) {
+            assertTrue(activityValue { it.findViewById<View>(id).isEnabled })
+            assertEquals(id == R.id.unlimited, activityValue { it.findViewById<RadioButton>(id).isChecked })
+        }
+        scenario.recreate()
+        assertEquals(R.id.unlimited, activityValue { it.findViewById<RadioGroup>(R.id.limit_mode).checkedRadioButtonId })
         scenario.close()
         scenario = ActivityScenario.launch(MainActivity::class.java)
         assertEquals(saved.copy(unlimited = true), SettingsStore(context).load())
         assertFalse(activityValue { it.findViewById<View>(R.id.time_seconds).isEnabled })
-        scenario.onActivity {
-            it.findViewById<Switch>(R.id.unlimited).isChecked = false
-            it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.count_mode)
-        }
+        scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.count_mode) }
+        assertFalse(activityValue { it.findViewById<RadioButton>(R.id.unlimited).isChecked })
         assertEquals("13", activityValue { it.findViewById<EditText>(R.id.repeats).text.toString() })
         assertTrue(activityValue { it.findViewById<View>(R.id.repeats).isEnabled })
+        assertTrue(activityValue { it.findViewById<View>(R.id.repeats).isShown })
         scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.time_mode) }
         assertEquals(saved, SettingsStore(context).load())
         assertEquals("25", activityValue { it.findViewById<EditText>(R.id.time_seconds).text.toString() })
@@ -349,7 +399,7 @@ class TickAppTest {
             }
         }
         assertEquals(9, SettingsStore(context).load().timeLimitSeconds)
-        scenario.onActivity { it.findViewById<Switch>(R.id.unlimited).isChecked = true }
+        scenario.onActivity { it.findViewById<RadioButton>(R.id.unlimited).isChecked = true }
         assertEquals("0", activityValue { it.findViewById<EditText>(R.id.time_minutes).text.toString() })
         assertEquals("9", activityValue { it.findViewById<EditText>(R.id.time_seconds).text.toString() })
         click()
@@ -491,7 +541,7 @@ class TickAppTest {
 
     @Test fun everySoundLoadsPlaysAndFinishesWithoutLeaking() {
         configure(1, 1, false)
-        for (sound in TickSound.entries) {
+        for (sound in TickSound.entries.filter { it != TickSound.NONE }) {
             assertEquals(sound.id, context.resources.getResourceEntryName(sound.audioRes))
             scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(sound.ordinal) }
             await { SettingsStore(context).load().sound == sound }
@@ -527,9 +577,85 @@ class TickAppTest {
         assertEquals(TickSettings(10, 17, true, TickSound.ELECTRIC_CLOCK), SettingsStore(context).load())
         assertEquals(TickSound.ELECTRIC_CLOCK.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
         assertFalse(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
-        scenario.onActivity { it.findViewById<Switch>(R.id.unlimited).isChecked = false }
+        scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.count_mode) }
         assertEquals("17", activityValue { it.findViewById<EditText>(R.id.repeats).text.toString() })
         assertTrue(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
+    }
+
+    @Test fun noSoundCancelsLoadingAndPlayingPreviewsAndRestoresWithoutAudio() {
+        scenario.onActivity {
+            it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal)
+            assertTrue(it.preview.active)
+            it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal)
+            assertFalse(it.preview.active)
+        }
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.BOWL.ordinal) }
+        await { activityValue { it.preview.playing } }
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal) }
+        assertFalse(activityValue { it.preview.active })
+        assertFalse(activityValue { it.preview.playing })
+        scenario.recreate()
+        assertEquals(TickSound.NONE, SettingsStore(context).load().sound)
+        assertEquals(TickSound.NONE.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
+        assertFalse(activityValue { it.preview.active })
+        assertReleased()
+    }
+
+    @Test fun silentCountAndTimeSessionsFlashRedThenGreenWithoutLoadingAudio() {
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal) }
+        for (mode in LimitMode.entries) {
+            configure(2, 2, false)
+            if (mode == LimitMode.TIME) configureTime(0, 3)
+            click()
+            await { currentState().phase == Phase.PLAYING }
+            assertEquals(Color.BLACK, playbackBackground())
+            assertIntervalRemaining(2)
+            assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService")
+                .contains("wakeLockHeld=true soundPoolLoaded=false engineRunning=true foreground=true"))
+            await { displayedSeconds() == if (mode == LimitMode.COUNT) 3L else 2L }
+            assertIntervalRemaining(1)
+            await { playbackBackground() == context.getColor(R.color.interval_flash) }
+            assertEquals(1L, currentState().completed)
+            assertIntervalRemaining(if (mode == LimitMode.COUNT) 2 else 1)
+            await { playbackBackground() == Color.BLACK }
+            await { playbackBackground() == context.getColor(R.color.completion_flash) }
+            assertEquals(0L, displayedSeconds())
+            assertIntervalRemaining(0)
+            await { currentState().phase == Phase.COMPLETE }
+            assertTrue(activityValue { it.findViewById<View>(R.id.configuration_screen).isShown })
+            assertReleased()
+        }
+    }
+
+    @Test fun silentUnlimitedPausesBothTimersAndReopensWithoutReplayingAFlash() {
+        configure(2, 2, true)
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal) }
+        click()
+        await { playbackBackground() == context.getColor(R.color.interval_flash) }
+        pauseOrResume()
+        await { currentState().phase == Phase.PAUSED }
+        assertEquals(Color.BLACK, playbackBackground())
+        val displayed = displayedSeconds()
+        val interval = activityValue { it.findViewById<TextView>(R.id.interval_remaining).text.toString() }
+        SystemClock.sleep(1_100)
+        assertEquals(displayed, displayedSeconds())
+        assertEquals(interval, activityValue { it.findViewById<TextView>(R.id.interval_remaining).text.toString() })
+        assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService")
+            .contains("wakeLockHeld=false soundPoolLoaded=false engineRunning=true foreground=true"))
+        scenario.recreate()
+        scenario.close()
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+        await { activityValue { it.findViewById<Button>(R.id.pause_resume).isEnabled } }
+        assertEquals(interval, activityValue { it.findViewById<TextView>(R.id.interval_remaining).text.toString() })
+        assertEquals(Color.BLACK, playbackBackground())
+        pauseOrResume()
+        await { currentState().phase == Phase.PLAYING }
+        assertEquals(Color.BLACK, playbackBackground())
+        await { currentState().completed == 2L }
+        assertEquals(Phase.PLAYING, currentState().phase)
+        click()
+        await { currentState().phase == Phase.STOPPED }
+        assertReleased()
     }
 
     @Test fun dropdownPreviewsTheSoundAndCanReplayTheSameSelection() {
@@ -767,7 +893,7 @@ class TickAppTest {
         scenario.onActivity {
             it.findViewById<EditText>(R.id.interval).setText(seconds.toString())
             it.findViewById<EditText>(R.id.repeats).setText(count.toString())
-            it.findViewById<Switch>(R.id.unlimited).isChecked = unlimited
+            it.findViewById<RadioGroup>(R.id.limit_mode).check(if (unlimited) R.id.unlimited else R.id.count_mode)
         }
     }
 
@@ -779,6 +905,13 @@ class TickAppTest {
 
     private fun displayedSeconds(): Long = activityValue {
         it.findViewById<TextView>(R.id.elapsed).text.split(':').fold(0L) { total, part -> total * 60 + part.toLong() }
+    }
+
+    private fun playbackBackground() = activityValue { (it.findViewById<View>(R.id.root).background as ColorDrawable).color }
+
+    private fun assertIntervalRemaining(seconds: Long) {
+        assertEquals(context.getString(R.string.interval_remaining, formatTimer(seconds)),
+            activityValue { it.findViewById<TextView>(R.id.interval_remaining).text.toString() })
     }
 
     private fun assertTimerMatchesSession() {

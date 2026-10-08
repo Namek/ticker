@@ -131,9 +131,26 @@ def assert_paused():
 def launch():
     shell("input", "keyevent", "KEYCODE_WAKEUP")
     shell("wm", "dismiss-keyguard")
+    # Boot completion can precede unlock, when normal app activities are still unavailable.
+    wait_for(lambda: shell("am", "get-started-user-state", "0").strip() == "RUNNING_UNLOCKED")
     shell("cmd", "statusbar", "collapse")
     shell("am", "start", "-W", "-n", ACTIVITY)
     find(resource=PACKAGE + (":id/start_stop" if is_idle() else ":id/stop"))
+
+
+def saved_settings():
+    xml = ET.fromstring(shell("run-as", PACKAGE, "cat", "shared_prefs/tick_settings.xml"))
+    return {item.get("name"): item.get("value", item.text) for item in xml}
+
+
+def assert_unlimited():
+    nodes = {item.get("resource-id"): item for item in tree().iter("node")}
+    for name in ("unlimited", "count_mode", "time_mode"):
+        item = nodes[PACKAGE + ":id/" + name]
+        assert item.get("checked") == ("true" if name == "unlimited" else "false")
+        assert item.get("enabled") == "true"
+    for name in ("repeats", "time_minutes", "time_seconds", "limit_label"):
+        assert PACKAGE + ":id/" + name not in nodes
 
 
 print("Device:", args.serial, "Android", shell("getprop", "ro.build.version.release").strip(), flush=True)
@@ -150,10 +167,10 @@ set_number("interval", 2)
 set_number("repeats", 7)
 find(text="Interval count")
 tap_id("unlimited")
-assert find(resource=PACKAGE + ":id/repeats").get("enabled") == "false"
+assert_unlimited()
 tap_id("sound")
 options = {item.get("text") for item in tree().iter("node")}
-assert {"Clock tick", "Electric wall clock", "Gong", "Singing bowl", "Soft bell"} <= options, options
+assert {"No sound", "Clock tick", "Electric wall clock", "Gong", "Singing bowl", "Soft bell"} <= options, options
 tap(find(text="Gong"))
 tap_id("start_stop")
 find(resource="com.android.permissioncontroller:id/permission_deny_button")
@@ -164,7 +181,7 @@ wait_for(lambda: count() >= 2)
 assert "sound=gong" in dump()
 assert "granted=false" in shell("dumpsys", "package", PACKAGE).split(PERMISSION + ":")[-1].splitlines()[0]
 find(text="Notifications are off. You can stop playback here.")
-print("PASS: Interval count is disabled in Unlimited; dropdown offers five sounds; Gong plays after notification permission denial.", flush=True)
+print("PASS: Unlimited hides limits and keeps all mode choices available; dropdown offers No sound and five recordings; Gong plays after notification permission denial.", flush=True)
 
 tap_id("pause_resume")
 wait_for(lambda: "phase=PAUSED" in dump())
@@ -257,9 +274,8 @@ time.sleep(1)
 assert_released()
 launch()
 assert find(resource=PACKAGE + ":id/interval").get("text") == "2"
-assert find(resource=PACKAGE + ":id/repeats").get("text") == "7"
-assert find(resource=PACKAGE + ":id/unlimited").get("checked") == "true"
-assert find(resource=PACKAGE + ":id/repeats").get("enabled") == "false"
+assert saved_settings()["repeats"] == "7"
+assert_unlimited()
 find(text="Gong")
 assert count() == 0
 print("PASS: process termination ends a paused session and retains settings.", flush=True)
@@ -273,14 +289,12 @@ wait_for(lambda: shell("getprop", "sys.boot_completed").strip() == "1", timeout=
 assert_released()
 launch()
 assert find(resource=PACKAGE + ":id/interval").get("text") == "2"
-assert find(resource=PACKAGE + ":id/repeats").get("text") == "7"
-assert find(resource=PACKAGE + ":id/unlimited").get("checked") == "true"
-assert find(resource=PACKAGE + ":id/repeats").get("enabled") == "false"
+assert saved_settings()["repeats"] == "7"
+assert_unlimited()
 find(text="Gong")
 assert count() == 0
 print("PASS: reboot ends playback and retains settings.", flush=True)
 
-tap_id("unlimited")
 tap_id("time_mode")
 set_number("interval", 4)
 set_number("time_minutes", 0)
@@ -331,4 +345,59 @@ tap(find(resource="android:id/button1"))
 assert_released()
 tap_id("time_mode")
 assert find(resource=PACKAGE + ":id/time_seconds").get("text") == "11"
-print("PASS: count mode shows remaining time and intervals; switching modes preserves both limits. All ADB checks passed.", flush=True)
+print("PASS: count mode shows remaining time and intervals; switching modes preserves both limits.", flush=True)
+
+# Persist every setting, including the inactive count and time limit under Unlimited.
+tap_id("count_mode")
+set_number("interval", 3)
+set_number("repeats", 19)
+tap_id("time_mode")
+set_number("time_minutes", 1)
+set_number("time_seconds", 23)
+tap_id("sound")
+tap(find(text="No sound"))
+tap_id("unlimited")
+expected = {"interval": "3", "repeats": "19", "time_limit": "83", "limit_mode": "time",
+            "unlimited": "true", "sound": "none"}
+
+
+wait_for(lambda: expected.items() <= saved_settings().items())
+shell("am", "force-stop", PACKAGE)
+launch()
+assert expected.items() <= saved_settings().items()
+assert find(resource=PACKAGE + ":id/interval").get("text") == "3"
+assert_unlimited()
+find(text="No sound")
+print("PASS: all six settings survive force-stop without starting a session, including both limits and No sound.", flush=True)
+
+tap_id("start_stop")
+wait_for(lambda: "phase=PLAYING" in dump())
+assert "wakeLockHeld=true soundPoolLoaded=false engineRunning=true foreground=true" in dump()
+interval_display = find(resource=PACKAGE + ":id/interval_remaining")
+session_display = find(resource=PACKAGE + ":id/elapsed")
+interval_bounds = list(map(int, re.findall(r"\d+", interval_display.get("bounds"))))
+timer_bounds = list(map(int, re.findall(r"\d+", session_display.get("bounds"))))
+assert interval_bounds[3] <= timer_bounds[1]
+before = count()
+shell("input", "keyevent", "KEYCODE_SLEEP")
+time.sleep(6.2)
+assert count() >= before + 2
+assert "soundPoolLoaded=false" in dump()
+launch()
+print("PASS: No sound uses no SoundPool and continues intervals with the screen off; interval time appears above the session timer.", flush=True)
+
+adb("reboot")
+adb("wait-for-disconnect")
+adb("wait-for-device", timeout=60)
+wait_for(lambda: shell("getprop", "sys.boot_completed").strip() == "1", timeout=60)
+launch()
+assert_released()
+assert expected.items() <= saved_settings().items()
+assert_unlimited()
+find(text="No sound")
+tap_id("count_mode")
+assert find(resource=PACKAGE + ":id/repeats").get("text") == "19"
+tap_id("time_mode")
+assert find(resource=PACKAGE + ":id/time_minutes").get("text") == "1"
+assert find(resource=PACKAGE + ":id/time_seconds").get("text") == "23"
+print("PASS: reboot stops silent playback and restores interval, count, both time fields, limit mode, Unlimited, and No sound. All ADB checks passed.", flush=True)

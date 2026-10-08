@@ -1,5 +1,10 @@
 <resources>
     <string name="app_name">Tick</string>
+    <string name="count_choice">Count</string>
+    <string name="time_choice">Time</string>
+    <string name="session_duration">Session duration</string>
+    <string name="no_time_limit">No time limit</string>
+    <string name="duration_invalid">Check your settings</string>
     <string name="interval_label">Interval in seconds</string>
     <string name="repeats_label">Interval count</string>
     <string name="time_limit_label">Time limit</string>
@@ -7,10 +12,11 @@
     <string name="seconds_label">Seconds</string>
     <string name="minutes_short">Min</string>
     <string name="seconds_short">Sec</string>
-    <string name="repeat_help">Sound at Start and after each interval, including the last.</string>
-    <string name="count_disabled_help">No limit. Stop whenever you like.</string>
-    <string name="time_limit_help">Sound at Start, each interval, and when time is up.</string>
+    <string name="repeat_help">Runs for this many full intervals.</string>
+    <string name="unlimited_help">No limit. Stop whenever you like.</string>
+    <string name="time_limit_help">The last interval ends when time is up.</string>
     <string name="sound_label">Sound</string>
+    <string name="sound_none">No sound</string>
     <string name="sound_clock">Clock tick</string>
     <string name="sound_electric_clock">Electric wall clock</string>
     <string name="sound_gong">Gong</string>
@@ -23,6 +29,7 @@
     <string name="resume">Resume</string>
     <string name="elapsed_label">Elapsed</string>
     <string name="remaining_label">Time left</string>
+    <string name="interval_remaining">Interval left · %1$s</string>
     <plurals name="intervals_left">
         <item quantity="one">%1$d interval left</item>
         <item quantity="other">%1$d intervals left</item>
@@ -34,9 +41,8 @@
     <string name="loading">Loading sound…</string>
     <string name="playing">Playing</string>
     <string name="paused">Paused</string>
-    <string name="number_error">Enter a whole number from 1 to 2147483647.</string>
-    <string name="time_error">Enter whole minutes and 0–59 seconds, totaling 1–2147483647 seconds.</string>
-    <string name="audio_help">Select a sound to preview. Uses media volume and plays alongside other audio.</string>
+    <string name="number_error">Use a whole number from 1 to 2,147,483,647.</string>
+    <string name="time_error">Use whole minutes and 0–59 seconds. The total must be between 1 and 2,147,483,647 seconds.</string>
     <string name="preview_error">Could not preview the sound. Please try again.</string>
     <string name="notifications_off">Notifications are off. You can stop playback here.</string>
     <string name="playback_error">Could not play the sound. Please try Start again.</string>
