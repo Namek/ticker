@@ -1,4 +1,4 @@
-package net.namekdev.ticker
+package net.namekdev.moments
 
 import org.junit.Assert.*
 import org.junit.Test

@@ -14,7 +14,7 @@ if not args.serial.startswith("emulator-"):
     parser.error("This test only runs on emulator serials, never on a physical phone.")
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE = "net.namekdev.ticker"
+PACKAGE = "net.namekdev.moments"
 ACTIVITY = PACKAGE + "/.MainActivity"
 SERVICE = PACKAGE + "/.TickService"
 PERMISSION = "android.permission.POST_NOTIFICATIONS"
@@ -42,7 +42,7 @@ def wait_for(check, timeout=15):
 
 def tree():
     # A native test-only probe reads the tree while the timer updates every second.
-    output = shell("am", "instrument", "-w", "net.namekdev.ticker.test/net.namekdev.ticker.UiProbe")
+    output = shell("am", "instrument", "-w", "net.namekdev.moments.test/net.namekdev.moments.UiProbe")
     match = re.search(r"^INSTRUMENTATION_RESULT: hierarchy=(.*)$", output, re.M)
     assert match is not None, output
     return ET.fromstring(match[1])

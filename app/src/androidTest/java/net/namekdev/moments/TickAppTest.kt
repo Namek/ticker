@@ -1,4 +1,4 @@
-package net.namekdev.ticker
+package net.namekdev.moments
 
 import android.Manifest
 import android.app.NotificationManager
@@ -257,7 +257,7 @@ class TickAppTest {
         context.unbindService(connection)
         bound = false
         SystemClock.sleep(1_500)
-        val dump = shell("dumpsys activity service net.namekdev.ticker/.TickService")
+        val dump = shell("dumpsys activity service net.namekdev.moments/.TickService")
         assertTrue(dump, dump.contains("engineRunning=true foreground=true"))
     }
 
@@ -269,7 +269,7 @@ class TickAppTest {
         shell("input keyevent KEYCODE_SLEEP")
         await { !context.getSystemService(PowerManager::class.java).isInteractive }
         await { currentState().completed >= before + 3 }
-        val dump = shell("dumpsys activity service net.namekdev.ticker/.TickService")
+        val dump = shell("dumpsys activity service net.namekdev.moments/.TickService")
         assertTrue(dump, dump.contains("wakeLockHeld=true"))
         assertTrue(dump, dump.contains("foreground=true"))
         // Exercise the notification's actual PendingIntent while the screen is off.
@@ -610,7 +610,7 @@ class TickAppTest {
             await { currentState().phase == Phase.PLAYING }
             assertEquals(Color.BLACK, playbackBackground())
             assertIntervalRemaining(2)
-            assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService")
+            assertTrue(shell("dumpsys activity service net.namekdev.moments/.TickService")
                 .contains("wakeLockHeld=true soundPoolLoaded=false engineRunning=true foreground=true"))
             await { displayedSeconds() == if (mode == LimitMode.COUNT) 3L else 2L }
             assertIntervalRemaining(1)
@@ -640,7 +640,7 @@ class TickAppTest {
         SystemClock.sleep(1_100)
         assertEquals(displayed, displayedSeconds())
         assertEquals(interval, activityValue { it.findViewById<TextView>(R.id.interval_remaining).text.toString() })
-        assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService")
+        assertTrue(shell("dumpsys activity service net.namekdev.moments/.TickService")
             .contains("wakeLockHeld=false soundPoolLoaded=false engineRunning=true foreground=true"))
         scenario.recreate()
         scenario.close()
@@ -732,7 +732,7 @@ class TickAppTest {
         val started = currentState().startedAtMillis!!
         await { currentState().completed == 2L }
         assertEquals(Phase.PLAYING, currentState().phase)
-        assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService").contains("wakeLockHeld=true"))
+        assertTrue(shell("dumpsys activity service net.namekdev.moments/.TickService").contains("wakeLockHeld=true"))
         await { currentState().phase == Phase.COMPLETE }
         assertTrue(SystemClock.elapsedRealtime() - started >= 2_000 + TickSound.GONG.completionMillis)
         assertReleased()
@@ -751,7 +751,7 @@ class TickAppTest {
             val displayed = displayedSeconds()
             assertFalse(activityValue { it.findViewById<EditText>(R.id.interval).isEnabled })
             assertEquals("Resume", activityValue { it.findViewById<Button>(R.id.pause_resume).text.toString() })
-            assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService")
+            assertTrue(shell("dumpsys activity service net.namekdev.moments/.TickService")
                 .contains("wakeLockHeld=false soundPoolLoaded=true engineRunning=true foreground=true"))
             SystemClock.sleep(1_200)
             assertEquals(paused, currentState())
@@ -760,7 +760,7 @@ class TickAppTest {
             val resumedAt = SystemClock.elapsedRealtime()
             pauseOrResume()
             await { currentState().phase == Phase.PLAYING }
-            assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService").contains("wakeLockHeld=true"))
+            assertTrue(shell("dumpsys activity service net.namekdev.moments/.TickService").contains("wakeLockHeld=true"))
             await { currentState().phase == Phase.COMPLETE }
             val remaining = paused.settings!!.durationSeconds!! * 1_000 - paused.elapsedMillis(resumedAt)
             assertTrue(SystemClock.elapsedRealtime() - resumedAt >= remaining + TickSound.CLOCK.completionMillis)
@@ -786,7 +786,7 @@ class TickAppTest {
         shell("input keyevent KEYCODE_SLEEP")
         SystemClock.sleep(1_500)
         assertEquals(paused, currentState())
-        assertTrue(shell("dumpsys activity service net.namekdev.ticker/.TickService").contains("wakeLockHeld=false"))
+        assertTrue(shell("dumpsys activity service net.namekdev.moments/.TickService").contains("wakeLockHeld=false"))
         shell("input keyevent KEYCODE_WAKEUP")
         shell("wm dismiss-keyguard")
         scenario = ActivityScenario.launch(MainActivity::class.java)
@@ -979,7 +979,7 @@ class TickAppTest {
     }
 
     private fun assertReleased() {
-        val dump = shell("dumpsys activity service net.namekdev.ticker/.TickService")
+        val dump = shell("dumpsys activity service net.namekdev.moments/.TickService")
         assertTrue(dump, dump.contains("wakeLockHeld=false soundPoolLoaded=false engineRunning=false foreground=false"))
         assertTrue(context.getSystemService(NotificationManager::class.java).activeNotifications.isEmpty())
     }

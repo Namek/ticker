@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner" android:targetPackage="net.namekdev.ticker" />
+    <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner" android:targetPackage="net.namekdev.moments" />
     <!-- Run the ADB UI probe in the test APK's process, without restarting Moments. -->
-    <instrumentation android:name="net.namekdev.ticker.UiProbe" android:targetPackage="net.namekdev.ticker.test" />
+    <instrumentation android:name="net.namekdev.moments.UiProbe" android:targetPackage="net.namekdev.moments.test" />
 </manifest>

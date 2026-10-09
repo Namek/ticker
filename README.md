@@ -1,6 +1,6 @@
 # Moments
 
-An offline Android meditation interval timer. Kotlin, native Android views, one app module, and no network permission. Android 8 or newer. Application ID `net.namekdev.ticker`.
+An offline Android meditation interval timer. Kotlin, native Android views, one app module, and no network permission. Android 8 or newer. Application ID `net.namekdev.moments`.
 
 ## Screenshots
 
@@ -19,16 +19,16 @@ export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
 export ANDROID_HOME=/path/to/android-sdk
 ./gradlew testReleaseUnitTest lintRelease assembleRelease
 mkdir -p dist
-cp app/build/outputs/apk/release/app-release-unsigned.apk dist/tick-release.apk
+cp app/build/outputs/apk/release/app-release-unsigned.apk dist/moments-release.apk
 ```
 
 Alternatively, put `sdk.dir=/path/to/android-sdk` in a local, untracked `local.properties`. Android Studio can create it. The first build downloads dependencies; the app itself is entirely offline. Use `--offline` for subsequent builds if all dependencies are cached.
 
-The release APK is `dist/tick-release.apk`. It is unsigned; Android requires a signature before installation.
+The release APK is `dist/moments-release.apk`. It is unsigned; Android requires a signature before installation.
 
 To build an Android App Bundle, run `./gradlew bundleRelease` with the same JDK and SDK. The output is `app/build/outputs/bundle/release/app-release.aab`. This repository does not configure release signing, so the bundle also needs signing before uploading to Play Console.
 
-Changing the application ID makes Android treat this as a separate app. Settings from builds with the previous ID do not transfer automatically.
+The application ID is now `net.namekdev.moments`. Android treats this as a separate app from earlier builds using `net.namekdev.ticker`; their saved settings do not transfer automatically. Both apps can be installed at the same time.
 
 ## Use
 
@@ -93,7 +93,7 @@ Reports are written to:
 Inspect a running session with:
 
 ```sh
-adb -s emulator-5580 shell dumpsys activity service net.namekdev.ticker/.TickService
+adb -s emulator-5580 shell dumpsys activity service net.namekdev.moments/.TickService
 adb -s emulator-5580 shell dumpsys power
 ```
 
@@ -102,8 +102,8 @@ adb -s emulator-5580 shell dumpsys power
 After signing the release APK, enable USB debugging, connect the device, accept its debugging prompt, and use its serial from `adb devices`:
 
 ```sh
-adb -s DEVICE_SERIAL install -r dist/tick-release.apk
-adb -s DEVICE_SERIAL shell am start -n net.namekdev.ticker/.MainActivity
+adb -s DEVICE_SERIAL install -r dist/moments-release.apk
+adb -s DEVICE_SERIAL shell am start -n net.namekdev.moments/.MainActivity
 ```
 
 Testing for this delivery uses only the emulator.

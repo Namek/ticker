@@ -1,4 +1,4 @@
-package net.namekdev.ticker
+package net.namekdev.moments
 
 const val INTERVAL_FLASH_MILLIS = 300L
 

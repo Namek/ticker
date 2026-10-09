@@ -80,7 +80,7 @@
                     android:layout_marginEnd="12dp" android:labelFor="@id/sound" android:text="@string/sound_label" />
                 <FrameLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
                     android:background="@drawable/field_background">
-                    <net.namekdev.ticker.SoundSpinner android:id="@+id/sound" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    <net.namekdev.moments.SoundSpinner android:id="@+id/sound" android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:saveEnabled="false" android:minHeight="48dp" android:paddingStart="0dp" android:paddingEnd="40dp"
                         android:background="@android:color/transparent" android:popupBackground="@color/surface"
                         android:spinnerMode="dropdown" android:prompt="@string/sound_label" />

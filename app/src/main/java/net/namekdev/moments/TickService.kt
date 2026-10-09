@@ -1,4 +1,4 @@
-package net.namekdev.ticker
+package net.namekdev.moments
 
 import android.annotation.SuppressLint
 import android.app.Notification
@@ -280,10 +280,10 @@ class TickService : Service() {
     }
 
     companion object {
-        const val ACTION_START = "net.namekdev.ticker.START"
-        const val ACTION_STOP = "net.namekdev.ticker.STOP"
-        const val ACTION_PAUSE = "net.namekdev.ticker.PAUSE"
-        const val ACTION_RESUME = "net.namekdev.ticker.RESUME"
+        const val ACTION_START = "net.namekdev.moments.START"
+        const val ACTION_STOP = "net.namekdev.moments.STOP"
+        const val ACTION_PAUSE = "net.namekdev.moments.PAUSE"
+        const val ACTION_RESUME = "net.namekdev.moments.RESUME"
         const val EXTRA_INTERVAL = "interval"
         const val EXTRA_REPEATS = "repeats"
         const val EXTRA_UNLIMITED = "unlimited"

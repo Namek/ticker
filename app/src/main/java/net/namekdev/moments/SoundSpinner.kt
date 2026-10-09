@@ -1,4 +1,4 @@
-package net.namekdev.ticker
+package net.namekdev.moments
 
 import android.content.Context
 import android.util.AttributeSet

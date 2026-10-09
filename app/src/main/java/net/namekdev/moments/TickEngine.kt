@@ -1,4 +1,4 @@
-package net.namekdev.ticker
+package net.namekdev.moments
 
 /** All calls, including scheduled callbacks, run on the service's main thread. */
 class TickEngine(

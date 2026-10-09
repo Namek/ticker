@@ -1,4 +1,4 @@
-package net.namekdev.ticker;
+package net.namekdev.moments;
 
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Activity;
