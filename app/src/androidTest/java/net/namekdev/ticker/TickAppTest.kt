@@ -823,8 +823,11 @@ class TickAppTest {
         pause.send()
         instrumentation.runOnMainSync { service.onStartCommand(startIntent(1, 99, true), 0, 0) }
         assertEquals(paused, currentState())
+        await {
+            manager.activeNotifications.singleOrNull()?.notification?.actions?.any { it.title == "Resume" } == true
+        }
         val notification = manager.activeNotifications.single().notification
-        assertEquals("Tick is paused", notification.extras.getString(android.app.Notification.EXTRA_TITLE))
+        assertEquals("Moments is paused", notification.extras.getString(android.app.Notification.EXTRA_TITLE))
         val resume = notification.actions.single { it.title == "Resume" }.actionIntent
         resume.send()
         await { currentState().phase == Phase.PLAYING }

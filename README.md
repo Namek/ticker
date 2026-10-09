@@ -1,12 +1,12 @@
-# Tick
+# Moments
 
-An offline Android tick timer. Kotlin, native Android views, one app module, and no network permission. Android 8 or newer. Application ID `net.namekdev.ticker`.
+An offline Android meditation interval timer. Kotlin, native Android views, one app module, and no network permission. Android 8 or newer. Application ID `net.namekdev.ticker`.
 
 ## Screenshots
 
 | Settings | Timer |
 | --- | --- |
-| <img src="docs/screenshots/settings.png" alt="Tick settings screen" width="280"> | <img src="docs/screenshots/timer.png" alt="Tick timer screen" width="280"> |
+| <img src="docs/screenshots/settings.png" alt="Moments settings screen" width="280"> | <img src="docs/screenshots/timer.png" alt="Moments timer screen" width="280"> |
 
 ## Build a release APK
 
@@ -48,7 +48,7 @@ Pause freezes both timers, interval progress, and any sound still ringing. Resum
 
 Stop inside the app asks for confirmation. Choose Keep ticking, or Keep paused during a pause, to keep the session. Choose Stop to end it and return to configuration. Another Start resets both the timer and counter. Configuration is hidden during playback. The timer survives rotation, reopening, and screen lock because its monotonic start time belongs to the service.
 
-Playback uses media volume and never requests audio focus, so it can mix with music or podcasts. It continues when you rotate, leave the app, dismiss its recent task, or lock the screen. Reopen Tick to see the active session. Process termination, force-stop, or reboot ends playback. Settings survive those events.
+Playback uses media volume and never requests audio focus, so it can mix with music or podcasts. It continues when you rotate, leave the app, dismiss its recent task, or lock the screen. Reopen Moments to see the active session. Process termination, force-stop, or reboot ends playback. Settings survive those events.
 
 Android 13 and newer ask for notification permission on the first valid Start. Playback starts regardless of the answer. The silent ongoing notification has Pause/Resume and Stop actions. Stop in the notification ends the session immediately. If notifications are denied, these controls remain available inside the app.
 
@@ -76,7 +76,7 @@ ANDROID_SERIAL=emulator-5580 ./gradlew connectedDebugAndroidTest
 python3 scripts/emulator_smoke.py --serial emulator-5580
 ```
 
-The Python smoke test requires Python 3 and ADB on `PATH`, plus the app and test APKs built by `connectedDebugAndroidTest`. It refuses physical-device serials. It clears Tick's data on that emulator, exercises the real notification permission dialog, Pause/Resume and Stop controls in the app and notification shade, and checks both countdown modes. It checks screen-off playback and paused state, wake lock release and reacquisition, reopening, process termination, and reboot. Settings survive while process termination or reboot ends the session. A native instrumentation probe in the test APK reads the current accessibility tree without waiting for the continuously updating timer to become idle. This probe is absent from the delivered app APK.
+The Python smoke test requires Python 3 and ADB on `PATH`, plus the app and test APKs built by `connectedDebugAndroidTest`. It refuses physical-device serials. It clears Moments' data on that emulator, exercises the real notification permission dialog, Pause/Resume and Stop controls in the app and notification shade, and checks both countdown modes. It checks screen-off playback and paused state, wake lock release and reacquisition, reopening, process termination, and reboot. Settings survive while process termination or reboot ends the session. A native instrumentation probe in the test APK reads the current accessibility tree without waiting for the continuously updating timer to become idle. This probe is absent from the delivered app APK.
 
 Unit tests cover immediate playback, full interval counts and the ending sound, time limits on and between boundaries, limits shorter than an interval, unlimited mode, cancellation before the end and during its tail, stale callbacks, timing drift, delayed callbacks past the deadline, each sound's completion and one-second cadence, playback failure, numeric bounds, countdown overflow and formatting, unknown sound fallback, and every WAV's duration, decoded size, and signal level. Instrumentation covers count/time validation and persistence, mutually exclusive modes and hidden limit inputs in Unlimited, countdown direction and zero during the final sound, intervals-left visibility, native dropdown previews and same-item replay, rapid preview replacement while loading, preview cancellation on Start/rotation/reopening, sound restoration, playback and cleanup for every sound, rotation and reopening during countdown, elapsed time in Unlimited, timer reset, confirming and canceling Stop, confirmation restoration, completion during confirmation, rapid Start/Stop, duplicate starts, queued restarts after all clients unbind, stopping while SoundPool loads, screen-off playback, notification Stop, and resource cleanup.
 

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Tick</string>
+    <string name="app_name">Moments</string>
     <string name="count_choice">Count</string>
     <string name="time_choice">Time</string>
     <string name="session_duration">Session duration</string>
@@ -47,8 +47,8 @@
     <string name="notifications_off">Notifications are off. You can stop playback here.</string>
     <string name="playback_error">Could not play the sound. Please try Start again.</string>
     <string name="start_error">Could not start playback. Please try again.</string>
-    <string name="channel_name">Tick playback</string>
-    <string name="notification_title">Tick is running</string>
-    <string name="notification_paused">Tick is paused</string>
+    <string name="channel_name">Moments playback</string>
+    <string name="notification_title">Moments is running</string>
+    <string name="notification_paused">Moments is paused</string>
     <string name="notification_count">Completed: %1$d · Interval: %2$d s</string>
 </resources>

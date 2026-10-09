@@ -1,6 +1,6 @@
 # Recorded sounds
 
-Tick's sounds are edits of real acoustic recordings. The source audio files are included here; the app bundles only the edited WAVs and does not download audio.
+Moments' sounds are edits of real acoustic recordings. The source audio files are included here; the app bundles only the edited WAVs and does not download audio.
 
 | App sound | Original recording | Creator | License |
 | --- | --- | --- | --- |

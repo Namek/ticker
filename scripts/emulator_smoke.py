@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ADB end-to-end checks. Resets Tick's data and reboots the specified emulator."""
+"""ADB end-to-end checks. Resets Moments' data and reboots the specified emulator."""
 import argparse
 from pathlib import Path
 import re
@@ -234,11 +234,11 @@ launch()
 tap_id("start_stop")
 wait_for(lambda: count() >= 1)
 shell("cmd", "statusbar", "expand-notifications")
-find(text="Tick is running")
-# Other system notifications may be above Tick. Expand Tick's own row.
+find(text="Moments is running")
+# Other system notifications may be above Moments. Expand Moments' own row.
 tick_row = next(item for item in tree().iter("node")
                 if item.get("resource-id") == "com.android.systemui:id/expandableNotificationRow"
-                and any(child.get("text") == "Tick is running" for child in item.iter("node")))
+                and any(child.get("text") == "Moments is running" for child in item.iter("node")))
 stop = next((item for item in tick_row.iter("node") if item.get("text", "").casefold() == "stop"), None)
 if stop is None:
     expand = next(item for item in tick_row.iter("node") if item.get("resource-id") == "android:id/expand_button")
@@ -246,7 +246,7 @@ if stop is None:
     find(text="Stop")
 tap(find(text="Pause"))
 wait_for(lambda: "phase=PAUSED" in dump())
-find(text="Tick is paused")
+find(text="Moments is paused")
 assert_paused()
 paused_time, paused_count = elapsed_millis(), count()
 time.sleep(2.2)
@@ -255,7 +255,7 @@ assert count() == paused_count
 tap(find(text="Resume"))
 wait_for(lambda: "phase=PLAYING" in dump())
 wait_for(lambda: count() > paused_count)
-find(text="Tick is running")
+find(text="Moments is running")
 tap(find(text="Pause"))
 wait_for(lambda: "phase=PAUSED" in dump())
 tap(find(text="Stop"))
