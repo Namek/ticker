@@ -14,6 +14,8 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
@@ -306,6 +308,49 @@ class TickAppTest {
         scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.count_mode) }
         assertEquals("17", activityValue { it.findViewById<EditText>(R.id.repeats).text.toString() })
         assertTrue(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
+    }
+
+    @Test fun slowTimerRenderingCatchesUpWithoutWaitingAnotherSecond() {
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal) }
+        for (unlimited in listOf(false, true)) {
+            configure(10, 2, unlimited)
+            click()
+            await { currentState().phase == Phase.PLAYING }
+            val checked = CountDownLatch(1)
+            var delayed = false
+            var expected = ""
+            var actual = ""
+            lateinit var timer: TextView
+            val watcher = object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+                override fun afterTextChanged(s: Editable?) {
+                    if (delayed) return
+                    delayed = true
+                    // Simulate rendering work that crosses the next second boundary.
+                    SystemClock.sleep(1_150)
+                    timer.post {
+                        val state = service.state
+                        val elapsedMillis = state.elapsedMillis(SystemClock.elapsedRealtime())
+                        expected = formatTimer(state.settings!!.remainingSeconds(elapsedMillis) ?: elapsedMillis / 1_000)
+                        actual = timer.text.toString()
+                        checked.countDown()
+                    }
+                }
+            }
+            scenario.onActivity {
+                timer = it.findViewById(R.id.elapsed)
+                timer.addTextChangedListener(watcher)
+            }
+            try {
+                assertTrue("Delayed timer update did not complete", checked.await(8, TimeUnit.SECONDS))
+                assertEquals("Timer must catch up immediately after rendering, unlimited=$unlimited", expected, actual)
+            } finally {
+                scenario.onActivity { timer.removeTextChangedListener(watcher) }
+            }
+            click()
+            await { currentState().phase == Phase.STOPPED }
+        }
     }
 
     @Test fun elapsedTimeAdvancesBetweenTicksAndStopRequiresConfirmation() {
@@ -627,6 +672,36 @@ class TickAppTest {
         }
     }
 
+    @Test fun audibleIntervalsUpdateTheirFlashInTheSameCueCallback() {
+        for (sound in listOf(TickSound.CLOCK, TickSound.BOWL)) {
+            for (mode in LimitMode.entries) {
+                configure(2, 2, false)
+                if (mode == LimitMode.TIME) configureTime(0, 3)
+                scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(sound.ordinal) }
+                val flashes = mutableListOf<Int>()
+                lateinit var root: View
+                scenario.onActivity { root = it.findViewById(R.id.root) }
+                val observer: (SessionState) -> Unit = { state ->
+                    if (state.phase == Phase.PLAYING && state.lastIntervalAtMillis != null) {
+                        flashes.add((root.background as ColorDrawable).color)
+                    }
+                }
+                instrumentation.runOnMainSync { service.observe(observer) }
+                try {
+                    click()
+                    await { currentState().phase == Phase.COMPLETE }
+                    instrumentation.runOnMainSync {
+                        assertEquals("${sound.id}, $mode", listOf(context.getColor(R.color.interval_flash),
+                            context.getColor(R.color.completion_flash)), flashes)
+                    }
+                    assertReleased()
+                } finally {
+                    instrumentation.runOnMainSync { service.removeObserver(observer) }
+                }
+            }
+        }
+    }
+
     @Test fun silentUnlimitedPausesBothTimersAndReopensWithoutReplayingAFlash() {
         configure(2, 2, true)
         scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal) }
@@ -816,6 +891,9 @@ class TickAppTest {
         await { currentState().phase == Phase.PLAYING }
         val manager = context.getSystemService(NotificationManager::class.java)
         // Pause must appear as soon as the sample loads, before the first interval ends.
+        await {
+            manager.activeNotifications.singleOrNull()?.notification?.actions?.any { it.title == "Pause" } == true
+        }
         val pause = manager.activeNotifications.single().notification.actions.single { it.title == "Pause" }.actionIntent
         pause.send()
         await { currentState().phase == Phase.PAUSED }

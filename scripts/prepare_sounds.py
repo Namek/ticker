@@ -13,7 +13,7 @@ SOUNDS = {
     "tick": ("clock-original.wav", 1.032, 300, 60),
     "electric_clock": ("electric-clock-original.mp3", 8.315, 150, 40),
     "gong": ("gong-original.mp3", 0.0, 3_000, 900),
-    "bowl": ("bowl-original.ogg", 0.0, 3_000, 900),
+    "bowl": ("bowl-original.ogg", 0.175, 3_000, 900),
     "bell": ("bell-original.mp3", 0.20, 2_000, 600),
 }
 

@@ -65,21 +65,32 @@ class MainActivity : Activity() {
     private val clearFlash = Runnable { renderBackground(session.active || startPending) }
     private val timerTick = object : Runnable {
         override fun run() {
-            updateTimer()
+            val updateUptime = SystemClock.uptimeMillis()
+            val elapsedMillis = session.elapsedMillis(SystemClock.elapsedRealtime())
+            updateTimer(elapsedMillis)
             if (visible && session.phase == Phase.PLAYING) {
-                timerHandler.postDelayed(this, 1_000 - session.elapsedMillis(SystemClock.elapsedRealtime()) % 1_000)
+                // A slow redraw must not skip the second after the value we just displayed.
+                timerHandler.postAtTime(this, updateUptime + 1_000 - elapsedMillis % 1_000)
             }
         }
     }
     private val observer: (SessionState) -> Unit = { state ->
+        // onStart disables Pause until a service rebind restores the full UI.
+        val intervalUpdate = session.phase == Phase.PLAYING && state.phase == Phase.PLAYING && pauseButton.isEnabled
         session = state
         startPending = false
-        if (state.active) {
-            preview.stop()
-            state.settings?.let { showSettings(it) }
-        } else dismissStopConfirmation()
-        render()
-        if (state.active && stopConfirmationPending) showStopConfirmation()
+        if (intervalUpdate) {
+            // Sound was just requested; update its flash without rebuilding the settings UI.
+            renderBackground(true)
+            updateTimer()
+        } else {
+            if (state.active) {
+                preview.stop()
+                state.settings?.let { showSettings(it) }
+            } else dismissStopConfirmation()
+            render()
+            if (state.active && stopConfirmationPending) showStopConfirmation()
+        }
     }
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
@@ -471,9 +482,8 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun updateTimer() {
+    private fun updateTimer(elapsedMillis: Long = session.elapsedMillis(SystemClock.elapsedRealtime())) {
         val settings = session.settings ?: return
-        val elapsedMillis = session.elapsedMillis(SystemClock.elapsedRealtime())
         val remaining = settings.remainingSeconds(elapsedMillis)
         findViewById<TextView>(R.id.interval_remaining).text = getString(
             R.string.interval_remaining, formatTimer(settings.intervalRemainingSeconds(elapsedMillis)))

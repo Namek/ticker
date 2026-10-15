@@ -54,6 +54,10 @@ Android 13 and newer ask for notification permission on the first valid Start. P
 
 ## Timing and lifecycle
 
+The displayed digits and next refresh use the same elapsed-time sample. Refreshes use absolute second boundaries; if drawing runs late, the display catches up immediately instead of holding an old digit until the following second. Android can still delay drawing while the main thread is busy.
+
+Interval sounds and flashes use the same timer callback. The playback screen updates its flash directly on each cue without rebuilding the settings UI. Each recorded sample has a strong attack within its first 20 ms; the singing bowl's quiet 175 ms intro is trimmed. Display refresh and device audio output latency can still produce a physical offset, especially with Bluetooth, so this is not a guarantee of hardware-level synchronization.
+
 `TickService` owns the SoundPool, foreground notification, partial wake lock, and session state. The activity binds to it for state updates. The service is non-exported, declares `mediaPlayback`, and returns `START_NOT_STICKY`. There is no boot receiver or persisted playback session.
 
 The timer uses `SystemClock.elapsedRealtime()`. Interval boundaries and the finite end time stay anchored to the session start, shifted forward by the duration of each pause. A late callback plays at most one sound and schedules one future boundary; missed slots are skipped. Completed and remaining interval counts follow elapsed time, including skipped slots. A callback arriving at or after the end plays the final sound once and finishes without extending the deadline or showing negative time. A time limit that falls on an interval boundary produces one ending cue. Long sound tails may overlap at short intervals without delaying the next boundary; SoundPool allows four simultaneous streams.

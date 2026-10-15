@@ -1,5 +1,7 @@
 # Recorded sounds
 
+The singing-bowl excerpt starts 175 ms into its source recording, placing the strong strike near the start of the sample. Its duration remains 3 seconds. This removes the quiet intro that made the strike appear late relative to the interval flash.
+
 Moments' sounds are edits of real acoustic recordings. The source audio files are included here; the app bundles only the edited WAVs and does not download audio.
 
 | App sound | Original recording | Creator | License |

@@ -95,6 +95,9 @@ class TickSettingsTest {
             assertTrue("SoundPool must not truncate the recording", wav.getInt(40) < 1_048_576)
             val samples = (44 until wav.capacity() step 2).map { wav.getShort(it).toDouble() / 32768 }
             val peak = samples.maxOf { kotlin.math.abs(it) }
+            val attackFrames = wav.getInt(24) * 20 / 1_000
+            assertTrue("${sound.id}: recorded strike must begin within 20 ms of its cue",
+                samples.take(attackFrames).maxOf { kotlin.math.abs(it) } >= peak * 0.2)
             val rms = kotlin.math.sqrt(samples.sumOf { it * it } / samples.size)
             val peakRange = if (sound == TickSound.GONG) 0.4..0.46 else 0.9..0.96
             assertTrue("${sound.id}: audible level with output headroom", peak in peakRange)
