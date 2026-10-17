@@ -15,6 +15,9 @@ SOUNDS = {
     "gong": ("gong-original.mp3", 0.0, 3_000, 900),
     "bowl": ("bowl-original.ogg", 0.175, 3_000, 900),
     "bell": ("bell-original.mp3", 0.20, 2_000, 600),
+    "low_bell": ("low-bell-original.mp3", 0.475, 3_000, 900),
+    "temple_block": ("temple-block-original.mp3", 0.001, 300, 100),
+    "tingsha": ("tingsha-original.mp3", 0.010, 2_500, 400),
 }
 
 for name, (source, start, duration, fade) in SOUNDS.items():
@@ -22,7 +25,7 @@ for name, (source, start, duration, fade) in SOUNDS.items():
         "ffmpeg", "-v", "error", "-i", str(ROOT / "audio-sources" / source),
         "-ac", "1", "-ar", str(RATE),
     ]
-    if name == "bell":
+    if name in ("bell", "tingsha"):
         # Reduce isolated transients so peak normalization also lifts the audible body.
         command += ["-af", "acompressor=threshold=0.08:ratio=3:attack=0.2:release=60"]
     decoded = subprocess.check_output(command + ["-f", "f32le", "-"])
@@ -36,8 +39,8 @@ for name, (source, start, duration, fade) in SOUNDS.items():
         # A 1 ms attack removes edit clicks without softening the recorded strike.
         attack = min(1.0, index / (RATE * 0.001))
         samples[index] *= attack * (0.5 - 0.5 * math.cos(math.pi * tail))
-    # The gong needs headroom for ringing tails when intervals are short.
-    peak = 0.45 if name == "gong" else 0.94
+    # Ringing tails need headroom when they overlap at short intervals.
+    peak = {"gong": 0.45, "low_bell": 0.75, "tingsha": 0.70}.get(name, 0.94)
     gain = peak / max(abs(value) for value in samples)
     frames = b"".join(struct.pack("<h", round(value * gain * 32767)) for value in samples)
     output = ROOT / "app/src/main/res/raw" / f"{name}.wav"

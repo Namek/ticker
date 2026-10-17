@@ -47,7 +47,8 @@ class TickService : Service() {
     private val listeners = mutableSetOf<(SessionState) -> Unit>()
     private val handler = Handler(Looper.getMainLooper())
     private var pool: SoundPool? = null
-    private var soundId = 0
+    private val soundIds = mutableMapOf<TickSound, Int>()
+    private val pendingSoundIds = mutableSetOf<Int>()
     private var wakeLock: PowerManager.WakeLock? = null
     private var foreground = false
     private var lastStartId = 0
@@ -56,9 +57,9 @@ class TickService : Service() {
         now = SystemClock::elapsedRealtime,
         schedule = { delay, action -> handler.postDelayed(action, delay) },
         cancelScheduled = { handler.removeCallbacksAndMessages(null) },
-        play = {
-            if (state.settings?.sound == TickSound.NONE) true else try {
-                (pool?.play(soundId, 1f, 1f, 1, 0, 1f) ?: 0) != 0
+        play = { sound ->
+            if (sound == TickSound.NONE) true else try {
+                (pool?.play(soundIds[sound] ?: 0, 1f, 1f, 1, 0, 1f) ?: 0) != 0
             } catch (_: RuntimeException) {
                 false
             }
@@ -104,7 +105,8 @@ class TickService : Service() {
                         begin(TickSettings(interval, repeats, intent.getBooleanExtra(EXTRA_UNLIMITED, false),
                             TickSound.fromId(intent.getStringExtra(EXTRA_SOUND)),
                             if (intent.getBooleanExtra(EXTRA_TIME_MODE, false)) LimitMode.TIME else LimitMode.COUNT,
-                            timeLimit))
+                            timeLimit,
+                            TickSound.fromId(intent.getStringExtra(EXTRA_BOUNDARY_SOUND) ?: intent.getStringExtra(EXTRA_SOUND))))
                     } else {
                         finish(Phase.FAILED)
                     }
@@ -134,7 +136,8 @@ class TickService : Service() {
                     setReferenceCounted(false)
                     acquire()
                 }
-            if (settings.sound == TickSound.NONE) {
+            val sounds = setOf(settings.sound, settings.boundarySound) - TickSound.NONE
+            if (sounds.isEmpty()) {
                 startEngine(settings)
                 return
             }
@@ -149,16 +152,23 @@ class TickService : Service() {
             newPool.setOnLoadCompleteListener { loadedPool, loadedSound, status ->
                 // SoundPool was created on the main looper. Identity rejects old session loads.
                 if (pool !== loadedPool || state.phase != Phase.LOADING) return@setOnLoadCompleteListener
-                handler.removeCallbacks(loadTimeout)
-                if (status != 0 || loadedSound != soundId) {
+                if (status != 0 || !pendingSoundIds.remove(loadedSound)) {
                     finish(Phase.FAILED)
-                } else {
+                } else if (pendingSoundIds.isEmpty()) {
+                    handler.removeCallbacks(loadTimeout)
                     startEngine(settings)
                 }
             }
             handler.postDelayed(loadTimeout, 10_000)
-            soundId = newPool.load(this, settings.sound.audioRes, 1)
-            if (soundId == 0) finish(Phase.FAILED)
+            for (sound in sounds) {
+                val id = newPool.load(this, sound.audioRes, 1)
+                if (id == 0) {
+                    finish(Phase.FAILED)
+                    return
+                }
+                soundIds[sound] = id
+                pendingSoundIds.add(id)
+            }
         } catch (_: RuntimeException) {
             finish(Phase.FAILED)
         }
@@ -211,7 +221,8 @@ class TickService : Service() {
         pool?.setOnLoadCompleteListener(null)
         pool?.release()
         pool = null
-        soundId = 0
+        soundIds.clear()
+        pendingSoundIds.clear()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
@@ -277,6 +288,7 @@ class TickService : Service() {
         writer.println("phase=${state.phase} completed=${state.completed} interval=${state.settings?.intervalSeconds} sound=${state.settings?.sound?.id} limitMode=${state.settings?.limitMode} timeLimit=${state.settings?.timeLimitSeconds}")
         writer.println("wakeLockHeld=${wakeLock?.isHeld == true} soundPoolLoaded=${pool != null} engineRunning=${engine.running} foreground=$foreground")
         writer.println("paused=${state.phase == Phase.PAUSED} elapsedMillis=${state.elapsedMillis(SystemClock.elapsedRealtime())}")
+        writer.println("boundarySound=${state.settings?.boundarySound?.id} loadedSounds=${soundIds.keys.joinToString { it.id }}")
     }
 
     companion object {
@@ -288,6 +300,7 @@ class TickService : Service() {
         const val EXTRA_REPEATS = "repeats"
         const val EXTRA_UNLIMITED = "unlimited"
         const val EXTRA_SOUND = "sound"
+        const val EXTRA_BOUNDARY_SOUND = "boundary_sound"
         const val EXTRA_TIME_MODE = "time_mode"
         const val EXTRA_TIME_LIMIT = "time_limit"
         const val NOTIFICATION_ID = 1

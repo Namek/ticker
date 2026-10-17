@@ -12,15 +12,17 @@ class SettingsStore(context: Context) {
         TickSound.fromId(preferences.getString("sound", null)),
         if (preferences.getString("limit_mode", null) == "time") LimitMode.TIME else LimitMode.COUNT,
         preferences.getInt("time_limit", 600).coerceAtLeast(1),
+        TickSound.fromId(preferences.getString("boundary_sound", preferences.getString("sound", null))),
     )
 
     fun saveValid(interval: String, repeats: String, unlimited: Boolean, sound: TickSound,
-                  limitMode: LimitMode, minutes: String, seconds: String) {
+                  limitMode: LimitMode, minutes: String, seconds: String, boundarySound: TickSound) {
         preferences.edit().apply {
             positiveWholeNumber(interval)?.let { putInt("interval", it) }
             positiveWholeNumber(repeats)?.let { putInt("repeats", it) }
             putBoolean("unlimited", unlimited)
             putString("sound", sound.id)
+            putString("boundary_sound", boundarySound.id)
             putString("limit_mode", if (limitMode == LimitMode.TIME) "time" else "count")
             timeLimitSeconds(minutes, seconds)?.let { putInt("time_limit", it) }
         }.apply()

@@ -5,7 +5,7 @@ class TickEngine(
     private val now: () -> Long,
     private val schedule: (Long, () -> Unit) -> Unit,
     private val cancelScheduled: () -> Unit,
-    private val play: () -> Boolean,
+    private val play: (TickSound) -> Boolean,
     private val onIntervalCompleted: (Long) -> Unit,
     private val onFinished: (Boolean) -> Unit,
 ) {
@@ -20,6 +20,7 @@ class TickEngine(
         private set
     private var generation = 0L
     private var nextAt = 0L
+    private var audioEndsAt = 0L
     private var pending: (() -> Unit)? = null
     private var settings = TickSettings()
 
@@ -28,6 +29,7 @@ class TickEngine(
         this.settings = settings
         completed = 0
         startedAtMillis = now()
+        audioEndsAt = startedAtMillis
         pausedAtMillis = null
         running = true
         generation++
@@ -47,6 +49,7 @@ class TickEngine(
         val pauseDuration = time - pausedAt
         startedAtMillis += pauseDuration
         nextAt += pauseDuration
+        audioEndsAt += pauseDuration
         pausedAtMillis = null
         pending?.let { queue((nextAt - time).coerceAtLeast(0), it) }
     }
@@ -73,18 +76,20 @@ class TickEngine(
     private fun tick(first: Boolean = false) {
         val elapsed = (now() - startedAtMillis).coerceAtLeast(0)
         val remaining = settings.remainingSeconds(elapsed)
-        if (!play()) {
+        val sound = if (first || remaining == 0L) settings.boundarySound else settings.sound
+        if (!play(sound)) {
             stop()
             onFinished(false)
             return
         }
+        if (sound != TickSound.NONE) audioEndsAt = maxOf(audioEndsAt, now() + sound.completionMillis)
         if (!first) {
             completed = settings.completedIntervals(elapsed)
             onIntervalCompleted(completed)
         }
         if (remaining == 0L) {
-            // The final boundary has its own sound; keep resources until its tail drains.
-            queue(settings.sound.completionMillis) {
+            // A shorter finish sound must not cut off a previous interval's ringing tail.
+            queue(maxOf(sound.completionMillis, audioEndsAt - now())) {
                 stop()
                 onFinished(true)
             }

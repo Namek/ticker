@@ -7,103 +7,142 @@
         android:fillViewport="true" android:clipToPadding="false">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="vertical" android:padding="@dimen/setup_padding" android:focusableInTouchMode="true">
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:text="@string/app_name" android:textSize="@dimen/setup_title_size" android:fontFamily="sans-serif-medium"
-                android:drawableEnd="@drawable/ic_tick" android:drawablePadding="16dp" android:gravity="center_vertical"
-                android:textColor="@color/ink" android:accessibilityHeading="true" tools:targetApi="28" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:minHeight="@dimen/setup_header_height" android:orientation="horizontal" android:gravity="center_vertical">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:text="@string/app_name" android:textSize="@dimen/setup_title_size" android:fontFamily="sans-serif-medium"
+                        android:textColor="@color/ink" android:accessibilityHeading="true" tools:targetApi="28" />
+                    <TextView android:id="@+id/setup_subtitle" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp" android:text="@string/find_your_pace" android:textSize="14sp" android:textColor="@color/muted" />
+                </LinearLayout>
+                <ImageView android:layout_width="44dp" android:layout_height="44dp" android:padding="12dp"
+                    android:background="@drawable/dial_badge" android:src="@drawable/ic_time" android:tint="@color/accent"
+                    android:contentDescription="@null" android:importantForAccessibility="no" />
+            </LinearLayout>
 
             <RadioGroup android:id="@+id/limit_mode" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/setup_gap" android:orientation="horizontal">
                 <RadioButton android:id="@+id/count_mode" style="@style/ModeChoice"
-                    android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_weight="1"
-                    android:layout_margin="2dp" android:drawableStart="@drawable/ic_count" android:text="@string/count_choice" />
+                    android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                    android:text="@string/count_choice" android:tooltipText="@string/repeat_help" />
                 <RadioButton android:id="@+id/time_mode" style="@style/ModeChoice"
-                    android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_weight="1"
-                    android:layout_margin="2dp" android:drawableStart="@drawable/ic_time" android:text="@string/time_choice" />
+                    android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                    android:text="@string/time_choice" android:tooltipText="@string/time_limit_help" />
                 <RadioButton android:id="@+id/unlimited" style="@style/ModeChoice"
-                    android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_weight="1"
-                    android:layout_margin="2dp" android:drawableStart="@drawable/ic_unlimited" android:text="@string/unlimited" />
+                    android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                    android:text="@string/unlimited" android:tooltipText="@string/unlimited_help" />
             </RadioGroup>
 
             <LinearLayout android:id="@+id/number_fields" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/setup_gap" android:orientation="horizontal" android:baselineAligned="false">
-                <LinearLayout android:id="@+id/interval_fields" android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:orientation="vertical">
-                    <TextView style="@style/SectionLabel" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:labelFor="@id/interval" android:text="@string/interval_label" />
-                    <EditText android:id="@+id/interval" style="@style/NumberField"
-                        android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
-                        android:imeOptions="actionNext" android:nextFocusForward="@id/repeats" android:importantForAutofill="no" />
-                </LinearLayout>
-                <LinearLayout android:id="@+id/limit_fields" android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="16dp">
-                    <TextView android:id="@+id/limit_label" style="@style/SectionLabel"
-                        android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:labelFor="@id/repeats" android:text="@string/repeats_label" />
-                    <FrameLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp">
-                        <EditText android:id="@+id/repeats" style="@style/NumberField"
-                            android:layout_width="match_parent" android:layout_height="wrap_content" android:imeOptions="actionDone"
-                            android:importantForAutofill="no" />
+                android:layout_marginTop="@dimen/setup_gap" android:orientation="vertical" android:baselineAligned="false">
+                <FrameLayout android:id="@+id/interval_fields" android:layout_width="match_parent" android:layout_height="@dimen/dial_area_height">
+                    <LinearLayout android:id="@+id/interval_dial" android:layout_width="@dimen/dial_size" android:layout_height="@dimen/dial_size"
+                        android:layout_gravity="center" android:orientation="vertical" android:gravity="center"
+                        android:background="@drawable/interval_dial" android:padding="12dp">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:labelFor="@id/interval" android:text="@string/interval_title" android:textSize="12sp" android:textColor="@color/muted" />
+                        <EditText android:id="@+id/interval" style="@style/DialNumber"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:textSize="@dimen/dial_number_size" android:contentDescription="@string/interval_label"
+                            android:imeOptions="actionNext" android:nextFocusForward="@id/repeats" android:importantForAutofill="no" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="@string/seconds_unit" android:textSize="12sp" android:textColor="@color/muted" />
+                    </LinearLayout>
+                    <Button android:id="@+id/interval_decrease" style="@style/Stepper"
+                        android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="start|center_vertical"
+                        android:text="@string/minus" android:contentDescription="@string/decrease_interval" />
+                    <Button android:id="@+id/interval_increase" style="@style/Stepper"
+                        android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="end|center_vertical"
+                        android:text="@string/plus" android:contentDescription="@string/increase_interval" />
+                </FrameLayout>
+
+                <LinearLayout android:id="@+id/settings_details" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical">
+                    <!-- INVISIBLE panels keep this slot the same height in all three modes. -->
+                    <FrameLayout android:id="@+id/limit_fields" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:minHeight="@dimen/limit_height">
+                        <LinearLayout android:id="@+id/count_limit_fields" android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:minHeight="@dimen/limit_height" android:orientation="horizontal" android:gravity="center_vertical">
+                            <TextView android:id="@+id/limit_label" style="@style/SectionLabel"
+                                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:labelFor="@id/repeats" android:text="@string/repeats_label" />
+                            <Button android:id="@+id/count_decrease" style="@style/Stepper"
+                                android:layout_width="48dp" android:layout_height="48dp"
+                                android:text="@string/minus" android:contentDescription="@string/decrease_count" />
+                            <EditText android:id="@+id/repeats" style="@style/DialNumber"
+                                android:layout_width="72dp" android:layout_height="wrap_content" android:textSize="22sp"
+                                android:imeOptions="actionDone" android:importantForAutofill="no" />
+                            <Button android:id="@+id/count_increase" style="@style/Stepper"
+                                android:layout_width="48dp" android:layout_height="48dp"
+                                android:text="@string/plus" android:contentDescription="@string/increase_count" />
+                        </LinearLayout>
                         <LinearLayout android:id="@+id/time_limit_fields" android:layout_width="match_parent" android:layout_height="wrap_content"
-                            android:orientation="horizontal" android:baselineAligned="false" android:visibility="gone">
-                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                                android:layout_marginEnd="8dp" android:orientation="vertical">
-                                <EditText android:id="@+id/time_minutes" style="@style/NumberField"
-                                    android:layout_width="match_parent" android:layout_height="wrap_content"
-                                    android:paddingStart="12dp" android:paddingEnd="12dp"
-                                    android:imeOptions="actionNext" android:nextFocusForward="@id/time_seconds" android:importantForAutofill="no" />
-                                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                                    android:layout_marginTop="6dp" android:gravity="center"
-                                    android:text="@string/minutes_short" android:contentDescription="@string/minutes_label"
-                                    android:textSize="12sp" android:textColor="@color/muted" android:labelFor="@id/time_minutes" />
-                            </LinearLayout>
-                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                                android:orientation="vertical">
-                                <EditText android:id="@+id/time_seconds" style="@style/NumberField"
-                                    android:layout_width="match_parent" android:layout_height="wrap_content"
-                                    android:paddingStart="12dp" android:paddingEnd="12dp" android:imeOptions="actionDone" android:importantForAutofill="no" />
-                                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                                    android:layout_marginTop="6dp" android:gravity="center"
-                                    android:text="@string/seconds_short" android:contentDescription="@string/seconds_label"
-                                    android:textSize="12sp" android:textColor="@color/muted" android:labelFor="@id/time_seconds" />
-                            </LinearLayout>
+                            android:minHeight="@dimen/limit_height" android:orientation="horizontal" android:gravity="center_vertical" android:visibility="invisible">
+                            <TextView style="@style/SectionLabel" android:layout_width="0dp" android:layout_height="wrap_content"
+                                android:layout_weight="1" android:text="@string/time_limit_label" />
+                            <EditText android:id="@+id/time_minutes" style="@style/DialNumber"
+                                android:layout_width="64dp" android:layout_height="wrap_content" android:textSize="22sp"
+                                android:contentDescription="@string/minutes_label" android:imeOptions="actionNext"
+                                android:nextFocusForward="@id/time_seconds" android:importantForAutofill="no" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                                android:labelFor="@id/time_minutes" android:text="@string/minutes_short" android:textSize="12sp" android:textColor="@color/muted" />
+                            <EditText android:id="@+id/time_seconds" style="@style/DialNumber"
+                                android:layout_width="56dp" android:layout_height="wrap_content" android:textSize="22sp"
+                                android:contentDescription="@string/seconds_label" android:imeOptions="actionDone" android:importantForAutofill="no" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                                android:labelFor="@id/time_seconds" android:text="@string/seconds_short" android:textSize="12sp" android:textColor="@color/muted" />
                         </LinearLayout>
                     </FrameLayout>
+
+                    <LinearLayout android:id="@+id/sound_choices" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="vertical">
+                        <LinearLayout android:id="@+id/boundary_sound_fields" style="@style/SoundRow"
+                            android:layout_width="match_parent" android:layout_height="wrap_content">
+                            <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="16dp"
+                                android:src="@drawable/ic_bell" android:contentDescription="@null" android:importantForAccessibility="no" />
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:orientation="vertical">
+                                <TextView style="@style/SoundLabel" android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:labelFor="@id/boundary_sound" android:text="@string/boundary_sound_label" />
+                                <net.namekdev.moments.SoundSpinner android:id="@+id/boundary_sound" style="@style/SoundChoice"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content" android:prompt="@string/boundary_sound_label" />
+                            </LinearLayout>
+                            <ImageView android:layout_width="20dp" android:layout_height="20dp"
+                                android:src="@drawable/ic_expand" android:contentDescription="@null" android:importantForAccessibility="no" />
+                        </LinearLayout>
+                        <LinearLayout android:id="@+id/sound_fields" style="@style/SoundRow"
+                            android:layout_width="match_parent" android:layout_height="wrap_content">
+                            <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="16dp"
+                                android:src="@drawable/ic_sound" android:contentDescription="@null" android:importantForAccessibility="no" />
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:orientation="vertical">
+                                <TextView style="@style/SoundLabel" android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:labelFor="@id/sound" android:text="@string/interval_sound_label" />
+                                <net.namekdev.moments.SoundSpinner android:id="@+id/sound" style="@style/SoundChoice"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content" android:prompt="@string/interval_sound_label" />
+                            </LinearLayout>
+                            <ImageView android:layout_width="20dp" android:layout_height="20dp"
+                                android:src="@drawable/ic_expand" android:contentDescription="@null" android:importantForAccessibility="no" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="@dimen/duration_height"
+                        android:orientation="horizontal" android:gravity="center_vertical">
+                        <TextView style="@style/SectionLabel" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:layout_marginEnd="12dp" android:text="@string/session_duration" android:labelFor="@id/duration_preview" />
+                        <TextView android:id="@+id/duration_preview" android:layout_width="0dp" android:layout_height="wrap_content"
+                            android:layout_weight="1" android:gravity="end" android:textSize="22sp"
+                            android:fontFamily="sans-serif-medium" android:fontFeatureSettings="tnum"
+                            android:textColor="@color/ink" tools:text="01:40" />
+                    </LinearLayout>
+                    <Button android:id="@+id/start_stop" style="@style/ActionButton"
+                        android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/start_spacing" android:minHeight="@dimen/start_height"
+                        android:padding="8dp" android:background="@drawable/begin_background" android:text="@string/begin" />
                 </LinearLayout>
             </LinearLayout>
-            <TextView android:id="@+id/count_help" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="6dp" android:text="@string/repeat_help" android:textSize="12sp" android:textColor="@color/muted" />
-
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/setup_gap" android:orientation="horizontal" android:gravity="center_vertical">
-                <TextView style="@style/SectionLabel" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:layout_marginEnd="12dp" android:labelFor="@id/sound" android:text="@string/sound_label" />
-                <FrameLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                    android:background="@drawable/field_background">
-                    <net.namekdev.moments.SoundSpinner android:id="@+id/sound" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:saveEnabled="false" android:minHeight="48dp" android:paddingStart="0dp" android:paddingEnd="40dp"
-                        android:background="@android:color/transparent" android:popupBackground="@color/surface"
-                        android:spinnerMode="dropdown" android:prompt="@string/sound_label" />
-                    <ImageView android:layout_width="24dp" android:layout_height="24dp"
-                        android:layout_gravity="end|center_vertical" android:layout_marginEnd="16dp"
-                        android:src="@drawable/ic_expand" android:contentDescription="@null" android:importantForAccessibility="no" />
-                </FrameLayout>
-            </LinearLayout>
-
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/setup_gap" android:orientation="horizontal" android:gravity="center_vertical">
-                <TextView style="@style/SectionLabel" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:layout_marginEnd="12dp" android:text="@string/session_duration" android:labelFor="@id/duration_preview" />
-                <TextView android:id="@+id/duration_preview" android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:gravity="end" android:textSize="22sp"
-                    android:fontFamily="sans-serif-medium" android:fontFeatureSettings="tnum"
-                    android:textColor="@color/ink" tools:text="01:40" />
-            </LinearLayout>
-            <Button android:id="@+id/start_stop" style="@style/ActionButton"
-                android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal" android:layout_marginTop="16dp"
-                android:padding="12dp" android:paddingStart="24dp" android:paddingEnd="24dp"
-                android:textSize="24sp" android:text="@string/start" />
             <TextView android:id="@+id/playback_error" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="12dp" android:text="@string/playback_error" android:textSize="14sp"
                 android:textColor="?android:attr/colorError" android:visibility="gone" android:accessibilityLiveRegion="polite" />

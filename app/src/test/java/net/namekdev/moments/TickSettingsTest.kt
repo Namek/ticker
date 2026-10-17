@@ -99,27 +99,51 @@ class TickSettingsTest {
             assertTrue("${sound.id}: recorded strike must begin within 20 ms of its cue",
                 samples.take(attackFrames).maxOf { kotlin.math.abs(it) } >= peak * 0.2)
             val rms = kotlin.math.sqrt(samples.sumOf { it * it } / samples.size)
-            val peakRange = if (sound == TickSound.GONG) 0.4..0.46 else 0.9..0.96
+            val peakRange = when (sound) {
+                TickSound.GONG -> 0.4..0.46
+                TickSound.LOW_BELL -> 0.7..0.76
+                TickSound.TINGSHA -> 0.65..0.71
+                else -> 0.9..0.96
+            }
             assertTrue("${sound.id}: audible level with output headroom", peak in peakRange)
             assertTrue("${sound.id}: audible recorded body", rms > 0.1)
+            if (sound in listOf(TickSound.TEMPLE_BLOCK, TickSound.TINGSHA)) {
+                val trailingQuietFrames = samples.asReversed().takeWhile { kotlin.math.abs(it) < peak * 0.001 }.size
+                assertTrue("${sound.id}: trim trailing silence to less than 100 ms", trailingQuietFrames < wav.getInt(24) / 10)
+            }
         }
     }
 
-    @Test fun repeatedGongTailsDoNotClipAtShortIntervals() {
-        val wav = java.nio.ByteBuffer.wrap(java.io.File("src/main/res/raw/gong.wav").readBytes())
-            .order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        val rate = wav.getInt(24)
-        val samples = DoubleArray(wav.getInt(40) / 2) { wav.getShort(44 + it * 2).toDouble() / 32768 }
-        for (seconds in 1..2) {
-            val interval = seconds * rate
-            // A slightly early/late callback can make ringing partials reinforce each other.
-            for (jitterMillis in listOf(-40, 0, 40)) {
-                val starts = listOf(0, interval, 2 * interval + jitterMillis * rate / 1_000)
-                val mix = DoubleArray(samples.size + starts.last())
-                for (start in starts) {
-                    samples.forEachIndexed { index, sample -> mix[start + index] += sample }
+    @Test fun lowBellHasFewerOscillationsThanSoftBell() {
+        fun crossings(name: String): Int {
+            val wav = java.nio.ByteBuffer.wrap(java.io.File("src/main/res/raw/$name.wav").readBytes())
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            val rate = wav.getInt(24)
+            // Compare the ringing body, excluding the initial strike and tail fade.
+            return (rate / 10 until rate / 2).count { frame ->
+                (wav.getShort(44 + frame * 2) < 0) != (wav.getShort(44 + (frame + 1) * 2) < 0)
+            }
+        }
+        assertTrue("Low bell must be lower-pitched than Soft bell", crossings("low_bell") < crossings("bell") / 2)
+    }
+
+    @Test fun repeatedRingingTailsDoNotClipAtShortIntervals() {
+        for (sound in listOf(TickSound.GONG, TickSound.LOW_BELL, TickSound.TINGSHA)) {
+            val wav = java.nio.ByteBuffer.wrap(java.io.File("src/main/res/raw/${sound.id}.wav").readBytes())
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            val rate = wav.getInt(24)
+            val samples = DoubleArray(wav.getInt(40) / 2) { wav.getShort(44 + it * 2).toDouble() / 32768 }
+            for (seconds in 1..2) {
+                val interval = seconds * rate
+                // A slightly early/late callback can make ringing partials reinforce each other.
+                for (jitterMillis in listOf(-40, 0, 40)) {
+                    val starts = listOf(0, interval, 2 * interval + jitterMillis * rate / 1_000)
+                    val mix = DoubleArray(samples.size + starts.last())
+                    for (start in starts) {
+                        samples.forEachIndexed { index, sample -> mix[start + index] += sample }
+                    }
+                    assertTrue("${sound.id} tails must leave mixing headroom", mix.maxOf { kotlin.math.abs(it) } < 0.95)
                 }
-                assertTrue("Gong tails must leave mixing headroom", mix.maxOf { kotlin.math.abs(it) } < 0.95)
             }
         }
     }

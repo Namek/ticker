@@ -11,8 +11,8 @@ android {
         applicationId = "net.namekdev.moments"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.6.3"
+        versionCode = 19
+        versionName = "1.8.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {

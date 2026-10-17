@@ -8,7 +8,10 @@ enum class TickSound(val id: String, val labelRes: Int, val audioRes: Int, val d
     ELECTRIC_CLOCK("electric_clock", R.string.sound_electric_clock, R.raw.electric_clock, 150),
     GONG("gong", R.string.sound_gong, R.raw.gong, 3_000),
     BOWL("bowl", R.string.sound_bowl, R.raw.bowl, 3_000),
-    BELL("bell", R.string.sound_bell, R.raw.bell, 2_000);
+    BELL("bell", R.string.sound_bell, R.raw.bell, 2_000),
+    LOW_BELL("low_bell", R.string.sound_low_bell, R.raw.low_bell, 3_000),
+    TEMPLE_BLOCK("temple_block", R.string.sound_temple_block, R.raw.temple_block, 300),
+    TINGSHA("tingsha", R.string.sound_tingsha, R.raw.tingsha, 2_500);
 
     // Silent sessions still leave the final flash visible. Audio also needs an output drain margin.
     val completionMillis: Long get() = if (this == NONE) INTERVAL_FLASH_MILLIS else durationMillis + 200L
@@ -27,6 +30,7 @@ data class TickSettings(
     val sound: TickSound = TickSound.CLOCK,
     val limitMode: LimitMode = LimitMode.COUNT,
     val timeLimitSeconds: Int = 600,
+    val boundarySound: TickSound = sound,
 ) {
     init {
         require(intervalSeconds > 0 && repeatCount > 0 && timeLimitSeconds > 0)

@@ -8,6 +8,7 @@ class TickEngineTest {
         var time = 0L
         val jobs = mutableListOf<Pair<Long, () -> Unit>>()
         val ticks = mutableListOf<Long>()
+        val sounds = mutableListOf<TickSound>()
         val counts = mutableListOf<Long>()
         val finishes = mutableListOf<Boolean>()
         var canPlay = true
@@ -15,7 +16,13 @@ class TickEngineTest {
             now = { time },
             schedule = { delay, action -> jobs.add(time + delay to action) },
             cancelScheduled = { jobs.clear() },
-            play = { if (canPlay) ticks.add(time); canPlay },
+            play = { sound ->
+                if (canPlay) {
+                    ticks.add(time)
+                    sounds.add(sound)
+                }
+                canPlay
+            },
             onIntervalCompleted = { counts.add(it) },
             onFinished = { finishes.add(it) },
         )
@@ -51,6 +58,64 @@ class TickEngineTest {
         assertEquals(listOf(true), clock.finishes)
         assertFalse(clock.engine.running)
         assertTrue(clock.jobs.isEmpty())
+    }
+
+    @Test fun startAndFinishUseTheirOwnSoundInBothFiniteModes() {
+        for (mode in LimitMode.entries) {
+            val clock = Clock()
+            clock.engine.start(TickSettings(2, 3, sound = TickSound.TEMPLE_BLOCK,
+                limitMode = mode, timeLimitSeconds = 5, boundarySound = TickSound.GONG))
+            val end = if (mode == LimitMode.COUNT) 6_000L else 5_000L
+            clock.advance(end)
+            assertEquals(listOf(0L, 2_000L, 4_000L, end), clock.ticks)
+            assertEquals(listOf(TickSound.GONG, TickSound.TEMPLE_BLOCK, TickSound.TEMPLE_BLOCK, TickSound.GONG), clock.sounds)
+            clock.advance(end + TickSound.GONG.completionMillis - 1)
+            assertTrue(clock.engine.running)
+            clock.advance(end + TickSound.GONG.completionMillis)
+            assertEquals(listOf(true), clock.finishes)
+        }
+    }
+
+    @Test fun oneIntervalHasOnlyStartAndFinishCues() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(1, 1, sound = TickSound.GONG, boundarySound = TickSound.BELL))
+        clock.advance(1_000)
+        assertEquals(listOf(TickSound.BELL, TickSound.BELL), clock.sounds)
+        clock.advance(1_000 + TickSound.BELL.completionMillis)
+        assertEquals(listOf(true), clock.finishes)
+    }
+
+    @Test fun unlimitedUsesTheBoundarySoundOnlyAtStart() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(1, 1, true, sound = TickSound.NONE, boundarySound = TickSound.BELL))
+        clock.advance(3_000)
+        assertEquals(listOf(TickSound.BELL, TickSound.NONE, TickSound.NONE, TickSound.NONE), clock.sounds)
+        clock.engine.stop()
+        assertTrue(clock.finishes.isEmpty())
+    }
+
+    @Test fun callbackPastTheDeadlinePlaysOnlyTheFinishSound() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(1, 3, sound = TickSound.GONG, boundarySound = TickSound.CLOCK))
+        clock.deliverLate(5_000)
+        assertEquals(listOf(TickSound.CLOCK, TickSound.CLOCK), clock.sounds)
+        clock.advance(5_000 + TickSound.CLOCK.completionMillis)
+        assertEquals(listOf(true), clock.finishes)
+    }
+
+    @Test fun silentFinishPreservesTheLastIntervalTailAcrossPause() {
+        val clock = Clock()
+        clock.engine.start(TickSettings(1, 2, sound = TickSound.GONG, boundarySound = TickSound.NONE))
+        clock.advance(2_100)
+        assertEquals(listOf(TickSound.NONE, TickSound.GONG, TickSound.NONE), clock.sounds)
+        clock.engine.pause()
+        clock.advance(12_100)
+        clock.engine.resume()
+        clock.advance(11_000 + TickSound.GONG.completionMillis - 1)
+        assertTrue(clock.engine.running)
+        clock.advance(11_000 + TickSound.GONG.completionMillis)
+        assertEquals(listOf(true), clock.finishes)
+        assertEquals(3, clock.sounds.size)
     }
 
     @Test fun oneIntervalIncludesTheStartAndEndSoundsThenWaitsForTheTail() {

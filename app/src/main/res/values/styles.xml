@@ -14,16 +14,14 @@
         <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:textColor">@color/ink</item>
     </style>
-    <style name="NumberField" parent="android:style/Widget.Material.EditText">
-        <item name="android:background">@drawable/field_background</item>
+    <style name="DialNumber" parent="android:style/Widget.Material.EditText">
+        <item name="android:background">@android:color/transparent</item>
         <item name="android:backgroundTint">@null</item>
         <item name="android:minHeight">48dp</item>
-        <item name="android:paddingStart">12dp</item>
-        <item name="android:paddingEnd">12dp</item>
-        <item name="android:paddingTop">10dp</item>
-        <item name="android:paddingBottom">10dp</item>
-        <item name="android:textSize">20sp</item>
-        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:padding">0dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:fontFeatureSettings">tnum</item>
         <item name="android:textColor">@color/ink</item>
         <item name="android:inputType">numberSigned</item>
         <item name="android:selectAllOnFocus">true</item>
@@ -35,11 +33,39 @@
         <item name="android:gravity">center</item>
         <item name="android:minHeight">48dp</item>
         <item name="android:padding">8dp</item>
-        <item name="android:drawablePadding">4dp</item>
-        <item name="android:drawableTint">@color/mode_text</item>
         <item name="android:textSize">14sp</item>
         <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:textColor">@color/mode_text</item>
+    </style>
+    <style name="Stepper" parent="android:style/Widget.Material.Button">
+        <item name="android:background">@drawable/stepper_background</item>
+        <item name="android:backgroundTint">@null</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:minWidth">48dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:padding">0dp</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:textColor">@color/muted</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+    <style name="SoundRow">
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingTop">@dimen/sound_row_padding</item>
+        <item name="android:paddingBottom">@dimen/sound_row_padding</item>
+        <item name="android:background">@drawable/row_divider</item>
+    </style>
+    <style name="SoundLabel">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/muted</item>
+    </style>
+    <style name="SoundChoice" parent="android:style/Widget.Material.Spinner">
+        <item name="android:saveEnabled">false</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:padding">0dp</item>
+        <item name="android:background">@android:color/transparent</item>
+        <item name="android:popupBackground">@color/surface</item>
+        <item name="android:spinnerMode">dropdown</item>
     </style>
     <style name="ActionButton" parent="android:style/Widget.Material.Button">
         <item name="android:background">@drawable/button_background</item>

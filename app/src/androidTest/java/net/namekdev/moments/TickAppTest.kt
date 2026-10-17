@@ -111,13 +111,14 @@ class TickAppTest {
         assertTrue(activityValue { it.findViewById<EditText>(R.id.repeats).isShown })
     }
 
-    @Test fun settingsFitWithoutScrollingInPortraitAndLandscape() {
+    @Test fun settingsFitAndSoundRowsStayFixedAcrossModesInBothOrientations() {
         for ((requested, expected) in listOf(
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT to Configuration.ORIENTATION_PORTRAIT,
             ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE to Configuration.ORIENTATION_LANDSCAPE,
         )) {
             scenario.onActivity { it.requestedOrientation = requested }
             await { activityValue { it.resources.configuration.orientation == expected } }
+            var soundPositions: List<Int>? = null
             for (mode in listOf(R.id.count_mode, R.id.time_mode, R.id.unlimited)) {
                 scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(mode) }
                 instrumentation.waitForIdleSync()
@@ -125,8 +126,51 @@ class TickAppTest {
                     val screen = it.findViewById<ScrollView>(R.id.configuration_screen)
                     screen.canScrollVertically(1) || screen.canScrollVertically(-1)
                 })
+                val positions = activityValue { activity ->
+                    listOf(R.id.boundary_sound, R.id.sound).map { id ->
+                        IntArray(2).also { activity.findViewById<View>(id).getLocationOnScreen(it) }[1]
+                    }
+                }
+                if (soundPositions == null) soundPositions = positions
+                assertEquals("Sound rows moved in orientation $expected, mode $mode", soundPositions, positions)
             }
         }
+    }
+
+    @Test fun steppersRespectBoundsSaveAndLockDuringPlayback() {
+        scenario.onActivity { activity ->
+            val interval = activity.findViewById<EditText>(R.id.interval)
+            val count = activity.findViewById<EditText>(R.id.repeats)
+            activity.findViewById<Button>(R.id.interval_increase).performClick()
+            activity.findViewById<Button>(R.id.count_decrease).performClick()
+            assertEquals(TickSettings(11, 9), SettingsStore(context).load())
+            assertEquals("01:39", activity.findViewById<TextView>(R.id.duration_preview).text.toString())
+            for ((field, decrease, increase) in listOf(
+                Triple(interval, R.id.interval_decrease, R.id.interval_increase),
+                Triple(count, R.id.count_decrease, R.id.count_increase))) {
+                field.setText("1")
+                activity.findViewById<Button>(decrease).performClick()
+                assertEquals("1", field.text.toString())
+                field.setText(Int.MAX_VALUE.toString())
+                activity.findViewById<Button>(increase).performClick()
+                assertEquals(Int.MAX_VALUE.toString(), field.text.toString())
+                field.setText("")
+                activity.findViewById<Button>(decrease).performClick()
+                assertEquals("1", field.text.toString())
+                assertNull(field.error)
+            }
+        }
+        configure(10, 9, true)
+        selectSound(TickSound.NONE)
+        click()
+        await { currentState().phase == Phase.PLAYING }
+        for (id in listOf(R.id.interval_decrease, R.id.interval_increase, R.id.count_decrease, R.id.count_increase)) {
+            assertFalse(activityValue { it.findViewById<View>(id).isEnabled })
+        }
+        click()
+        await { currentState().phase == Phase.STOPPED }
+        assertTrue(activityValue { it.findViewById<View>(R.id.interval_increase).isEnabled })
+        assertFalse(activityValue { it.findViewById<View>(R.id.count_increase).isEnabled })
     }
 
     @Test fun durationPreviewFollowsValidEditsModesAndRestoration() {
@@ -311,7 +355,7 @@ class TickAppTest {
     }
 
     @Test fun slowTimerRenderingCatchesUpWithoutWaitingAnotherSecond() {
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal) }
+        selectSound(TickSound.NONE)
         for (unlimited in listOf(false, true)) {
             configure(10, 2, unlimited)
             click()
@@ -390,7 +434,7 @@ class TickAppTest {
     @Test fun bothLimitsAndSelectedModeSurviveRotationReopeningAndUnlimited() {
         configure(7, 13, false)
         configureTime(1, 25)
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal) }
+        selectSound(TickSound.NONE)
         val saved = TickSettings(7, 13, false, TickSound.NONE, LimitMode.TIME, 85)
         assertEquals(saved, SettingsStore(context).load())
         scenario.recreate()
@@ -458,7 +502,7 @@ class TickAppTest {
 
     @Test fun countModeCountsDownTimeAndIntervalsThroughTheFinalSound() {
         configure(2, 2, false)
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal) }
+        selectSound(TickSound.GONG)
         click()
         await { currentState().phase == Phase.PLAYING }
         assertEquals(4L, displayedSeconds())
@@ -482,7 +526,7 @@ class TickAppTest {
     @Test fun timeLimitCountsDownWithoutIntervalsAndEndsBetweenTicks() {
         configure(2, 99, false)
         configureTime(0, 5)
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal) }
+        selectSound(TickSound.GONG)
         click()
         await { currentState().phase == Phase.PLAYING }
         val started = currentState().startedAtMillis!!
@@ -584,11 +628,82 @@ class TickAppTest {
         assertReleased()
     }
 
+    @Test fun legacySoundRestoresBothChoicesWithoutPreviewing() {
+        val preferences = context.getSharedPreferences("tick_settings", Context.MODE_PRIVATE)
+        preferences.edit().putString("sound", TickSound.GONG.id).remove("boundary_sound").commit()
+        scenario.recreate()
+        assertEquals(TickSound.GONG, SettingsStore(context).load().sound)
+        assertEquals(TickSound.GONG, SettingsStore(context).load().boundarySound)
+        for (id in listOf(R.id.sound, R.id.boundary_sound)) {
+            assertEquals(TickSound.GONG.ordinal, activityValue { it.findViewById<Spinner>(id).selectedItemPosition })
+        }
+        assertFalse(activityValue { it.preview.active })
+        scenario.onActivity { it.findViewById<Spinner>(R.id.boundary_sound).setSelection(TickSound.NONE.ordinal) }
+        assertEquals(TickSound.GONG, SettingsStore(context).load().sound)
+        assertEquals(TickSound.NONE, SettingsStore(context).load().boundarySound)
+        scenario.recreate()
+        assertEquals(TickSound.NONE.ordinal, activityValue { it.findViewById<Spinner>(R.id.boundary_sound).selectedItemPosition })
+        assertFalse(activityValue { it.preview.active })
+        preferences.edit().putString("boundary_sound", "unknown-sound").commit()
+        assertEquals(TickSound.CLOCK, SettingsStore(context).load().boundarySound)
+    }
+
+    @Test fun separateSoundsPreviewPersistAndLoadTogetherAcrossPauseAndReopening() {
+        configure(2, 2, false)
+        scenario.onActivity { it.findViewById<Spinner>(R.id.boundary_sound).setSelection(TickSound.GONG.ordinal) }
+        await { activityValue { it.preview.playing && it.preview.sound == TickSound.GONG } }
+        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.TEMPLE_BLOCK.ordinal) }
+        await { activityValue { it.preview.playing && it.preview.sound == TickSound.TEMPLE_BLOCK } }
+        val saved = TickSettings(2, 2, sound = TickSound.TEMPLE_BLOCK, boundarySound = TickSound.GONG)
+        assertEquals(saved, SettingsStore(context).load())
+        scenario.recreate()
+        assertFalse(activityValue { it.preview.active })
+        assertEquals(TickSound.GONG.ordinal, activityValue { it.findViewById<Spinner>(R.id.boundary_sound).selectedItemPosition })
+        assertEquals(TickSound.TEMPLE_BLOCK.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
+        click()
+        await { currentState().phase == Phase.PLAYING }
+        assertEquals(saved, currentState().settings)
+        val loaded = shell("dumpsys activity service net.namekdev.moments/.TickService")
+        assertTrue(loaded, loaded.contains("loadedSounds=temple_block, gong"))
+        for (id in listOf(R.id.sound, R.id.boundary_sound)) {
+            assertFalse(activityValue { it.findViewById<Spinner>(id).isEnabled })
+        }
+        pauseOrResume()
+        await { currentState().phase == Phase.PAUSED }
+        scenario.recreate()
+        scenario.close()
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+        await { activityValue { it.findViewById<Button>(R.id.pause_resume).isEnabled } }
+        assertEquals(saved, currentState().settings)
+        pauseOrResume()
+        await { currentState().phase == Phase.COMPLETE }
+        assertReleased()
+        assertEquals(saved, SettingsStore(context).load())
+    }
+
+    @Test fun eitherSoundCanBeSilentWithoutDisablingTheOther() {
+        for ((intervalSound, boundarySound) in listOf(TickSound.NONE to TickSound.GONG, TickSound.GONG to TickSound.NONE)) {
+            configure(1, 2, false)
+            scenario.onActivity {
+                it.findViewById<Spinner>(R.id.sound).setSelection(intervalSound.ordinal)
+                it.findViewById<Spinner>(R.id.boundary_sound).setSelection(boundarySound.ordinal)
+            }
+            click()
+            await { currentState().phase == Phase.PLAYING }
+            val started = currentState().startedAtMillis!!
+            assertTrue(shell("dumpsys activity service net.namekdev.moments/.TickService").contains("loadedSounds=gong"))
+            await { currentState().phase == Phase.COMPLETE }
+            val expected = if (boundarySound == TickSound.NONE) 1_000 else 2_000
+            assertTrue(SystemClock.elapsedRealtime() - started >= expected + TickSound.GONG.completionMillis)
+            assertReleased()
+        }
+    }
+
     @Test fun everySoundLoadsPlaysAndFinishesWithoutLeaking() {
         configure(1, 1, false)
         for (sound in TickSound.entries.filter { it != TickSound.NONE }) {
             assertEquals(sound.id, context.resources.getResourceEntryName(sound.audioRes))
-            scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(sound.ordinal) }
+            selectSound(sound)
             await { SettingsStore(context).load().sound == sound }
             click()
             await { currentState().phase == Phase.PLAYING }
@@ -604,27 +719,29 @@ class TickAppTest {
     }
 
     @Test fun soundSelectionSurvivesRotationReopeningAndUnlimited() {
-        configure(10, 17, true)
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.ELECTRIC_CLOCK.ordinal) }
-        await { SettingsStore(context).load().sound == TickSound.ELECTRIC_CLOCK }
-        scenario.recreate()
-        assertEquals(TickSound.ELECTRIC_CLOCK.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
-        click()
-        await { currentState().phase == Phase.PLAYING }
-        scenario.recreate()
-        await { activityValue { it.findViewById<Button>(R.id.stop).isShown } }
-        assertEquals(TickSound.ELECTRIC_CLOCK, currentState().settings?.sound)
-        scenario.close()
-        scenario = ActivityScenario.launch(MainActivity::class.java)
-        await { activityValue { it.findViewById<Button>(R.id.stop).isShown } }
-        click()
-        await { currentState().phase == Phase.STOPPED }
-        assertEquals(TickSettings(10, 17, true, TickSound.ELECTRIC_CLOCK), SettingsStore(context).load())
-        assertEquals(TickSound.ELECTRIC_CLOCK.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
-        assertFalse(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
-        scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.count_mode) }
-        assertEquals("17", activityValue { it.findViewById<EditText>(R.id.repeats).text.toString() })
-        assertTrue(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
+        for (sound in listOf(TickSound.ELECTRIC_CLOCK, TickSound.LOW_BELL, TickSound.TEMPLE_BLOCK, TickSound.TINGSHA)) {
+            configure(10, 17, true)
+            selectSound(sound)
+            await { SettingsStore(context).load().sound == sound }
+            scenario.recreate()
+            assertEquals(sound.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
+            click()
+            await { currentState().phase == Phase.PLAYING }
+            scenario.recreate()
+            await { activityValue { it.findViewById<Button>(R.id.stop).isShown } }
+            assertEquals(sound, currentState().settings?.sound)
+            scenario.close()
+            scenario = ActivityScenario.launch(MainActivity::class.java)
+            await { activityValue { it.findViewById<Button>(R.id.stop).isShown } }
+            click()
+            await { currentState().phase == Phase.STOPPED }
+            assertEquals(TickSettings(10, 17, true, sound), SettingsStore(context).load())
+            assertEquals(sound.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
+            assertFalse(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
+            scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(R.id.count_mode) }
+            assertEquals("17", activityValue { it.findViewById<EditText>(R.id.repeats).text.toString() })
+            assertTrue(activityValue { it.findViewById<EditText>(R.id.repeats).isEnabled })
+        }
     }
 
     @Test fun noSoundCancelsLoadingAndPlayingPreviewsAndRestoresWithoutAudio() {
@@ -634,9 +751,9 @@ class TickAppTest {
             it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal)
             assertFalse(it.preview.active)
         }
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.BOWL.ordinal) }
+        selectSound(TickSound.BOWL)
         await { activityValue { it.preview.playing } }
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal) }
+        selectSound(TickSound.NONE)
         assertFalse(activityValue { it.preview.active })
         assertFalse(activityValue { it.preview.playing })
         scenario.recreate()
@@ -647,7 +764,7 @@ class TickAppTest {
     }
 
     @Test fun silentCountAndTimeSessionsFlashRedThenGreenWithoutLoadingAudio() {
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal) }
+        selectSound(TickSound.NONE)
         for (mode in LimitMode.entries) {
             configure(2, 2, false)
             if (mode == LimitMode.TIME) configureTime(0, 3)
@@ -677,7 +794,7 @@ class TickAppTest {
             for (mode in LimitMode.entries) {
                 configure(2, 2, false)
                 if (mode == LimitMode.TIME) configureTime(0, 3)
-                scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(sound.ordinal) }
+                selectSound(sound)
                 val flashes = mutableListOf<Int>()
                 lateinit var root: View
                 scenario.onActivity { root = it.findViewById(R.id.root) }
@@ -689,6 +806,7 @@ class TickAppTest {
                 instrumentation.runOnMainSync { service.observe(observer) }
                 try {
                     click()
+                    await { currentState().phase == Phase.PLAYING }
                     await { currentState().phase == Phase.COMPLETE }
                     instrumentation.runOnMainSync {
                         assertEquals("${sound.id}, $mode", listOf(context.getColor(R.color.interval_flash),
@@ -704,7 +822,7 @@ class TickAppTest {
 
     @Test fun silentUnlimitedPausesBothTimersAndReopensWithoutReplayingAFlash() {
         configure(2, 2, true)
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.NONE.ordinal) }
+        selectSound(TickSound.NONE)
         click()
         await { playbackBackground() == context.getColor(R.color.interval_flash) }
         pauseOrResume()
@@ -735,22 +853,30 @@ class TickAppTest {
 
     @Test fun dropdownPreviewsTheSoundAndCanReplayTheSameSelection() {
         assertFalse(activityValue { it.preview.active })
-        for (sound in listOf(TickSound.GONG, TickSound.ELECTRIC_CLOCK)) {
-            repeat(2) {
-                scenario.onActivity { it.findViewById<Spinner>(R.id.sound).performClick() }
-                val label = context.getString(sound.labelRes)
-                await {
-                    instrumentation.uiAutomation.rootInActiveWindow
-                        ?.findAccessibilityNodeInfosByText(label)?.any { it.text?.toString() == label } == true
+        for (id in listOf(R.id.sound, R.id.boundary_sound)) {
+            for (sound in listOf(TickSound.TEMPLE_BLOCK, TickSound.TINGSHA)) {
+                repeat(2) { attempt ->
+                    scenario.onActivity {
+                        val target = if (attempt == 0) {
+                            if (id == R.id.sound) R.id.sound_fields else R.id.boundary_sound_fields
+                        } else id
+                        it.findViewById<View>(target).performClick()
+                    }
+                    val label = context.getString(sound.labelRes)
+                    await {
+                        instrumentation.uiAutomation.rootInActiveWindow
+                            ?.findAccessibilityNodeInfosByText(label)?.any { it.text?.toString() == label } == true
+                    }
+                    val option = instrumentation.uiAutomation.rootInActiveWindow
+                        .findAccessibilityNodeInfosByText(label).first { it.text?.toString() == label }
+                    assertTrue(option.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+                    await { activityValue { it.preview.playing && it.preview.sound == sound } }
+                    val saved = SettingsStore(context).load()
+                    assertEquals(sound, if (id == R.id.sound) saved.sound else saved.boundarySound)
+                    assertFalse(currentState().active)
+                    assertReleased()
+                    await { activityValue { !it.preview.active } }
                 }
-                val option = instrumentation.uiAutomation.rootInActiveWindow
-                    .findAccessibilityNodeInfosByText(label).first { it.text?.toString() == label }
-                assertTrue(option.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-                await { activityValue { it.preview.playing && it.preview.sound == sound } }
-                assertEquals(sound, SettingsStore(context).load().sound)
-                assertFalse(currentState().active)
-                assertReleased()
-                await { activityValue { !it.preview.active } }
             }
         }
     }
@@ -780,14 +906,14 @@ class TickAppTest {
     }
 
     @Test fun rotationAndReopeningReleasePreviewWithoutAutoplaying() {
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal) }
+        selectSound(TickSound.GONG)
         await { activityValue { it.preview.playing } }
         val oldPreview = activityValue { it.preview }
         scenario.recreate()
         assertFalse(oldPreview.active)
         assertFalse(activityValue { it.preview.active })
         assertEquals(TickSound.GONG.ordinal, activityValue { it.findViewById<Spinner>(R.id.sound).selectedItemPosition })
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.BOWL.ordinal) }
+        selectSound(TickSound.BOWL)
         await { activityValue { it.preview.playing } }
         val closingPreview = activityValue { it.preview }
         scenario.close()
@@ -801,7 +927,7 @@ class TickAppTest {
 
     @Test fun finalGongRingsBeforeCompletionAndReleasesResourcesAfterwards() {
         configure(1, 2, false)
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal) }
+        selectSound(TickSound.GONG)
         click()
         await { currentState().phase == Phase.PLAYING }
         val started = currentState().startedAtMillis!!
@@ -930,7 +1056,7 @@ class TickAppTest {
 
     @Test fun pausingTheFinalGongWaitsForResumeBeforeCompleting() {
         configure(1, 1, false)
-        scenario.onActivity { it.findViewById<Spinner>(R.id.sound).setSelection(TickSound.GONG.ordinal) }
+        selectSound(TickSound.GONG)
         click()
         await { currentState().completed == 1L }
         pauseOrResume()
@@ -968,6 +1094,12 @@ class TickAppTest {
         assertEquals(Phase.STOPPED, currentState().phase)
         assertEquals(completed, currentState().completed)
         assertReleased()
+    }
+
+    private fun selectSound(sound: TickSound) = scenario.onActivity { activity ->
+        for (id in listOf(R.id.sound, R.id.boundary_sound)) {
+            activity.findViewById<Spinner>(id).setSelection(sound.ordinal)
+        }
     }
 
     private fun configure(seconds: Int, count: Int, unlimited: Boolean) {

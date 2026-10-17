@@ -1,0 +1,3 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:gravity="top" android:height="1dp"><shape><solid android:color="@color/outline" /></shape></item>
+</layer-list>

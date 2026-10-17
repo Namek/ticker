@@ -165,12 +165,14 @@ shell("settings", "put", "system", "user_rotation", "0")
 launch()
 set_number("interval", 2)
 set_number("repeats", 7)
-find(text="Interval count")
+find(resource=PACKAGE + ":id/repeats")
 tap_id("unlimited")
 assert_unlimited()
 tap_id("sound")
 options = {item.get("text") for item in tree().iter("node")}
-assert {"No sound", "Clock tick", "Electric wall clock", "Gong", "Singing bowl", "Soft bell"} <= options, options
+assert {"No sound", "Clock tick", "Electric wall clock", "Gong", "Singing bowl", "Soft bell", "Low bell", "Wooden temple block", "Tingsha cymbals"} <= options, options
+tap(find(text="Gong"))
+tap_id("boundary_sound")
 tap(find(text="Gong"))
 tap_id("start_stop")
 find(resource="com.android.permissioncontroller:id/permission_deny_button")
@@ -181,7 +183,7 @@ wait_for(lambda: count() >= 2)
 assert "sound=gong" in dump()
 assert "granted=false" in shell("dumpsys", "package", PACKAGE).split(PERMISSION + ":")[-1].splitlines()[0]
 find(text="Notifications are off. You can stop playback here.")
-print("PASS: Unlimited hides limits and keeps all mode choices available; dropdown offers No sound and five recordings; Gong plays after notification permission denial.", flush=True)
+print("PASS: Unlimited hides limits and keeps all mode choices available; dropdown offers No sound and eight recordings; Gong plays after notification permission denial.", flush=True)
 
 tap_id("pause_resume")
 wait_for(lambda: "phase=PAUSED" in dump())
@@ -356,9 +358,11 @@ set_number("time_minutes", 1)
 set_number("time_seconds", 23)
 tap_id("sound")
 tap(find(text="No sound"))
+tap_id("boundary_sound")
+tap(find(text="No sound"))
 tap_id("unlimited")
 expected = {"interval": "3", "repeats": "19", "time_limit": "83", "limit_mode": "time",
-            "unlimited": "true", "sound": "none"}
+            "unlimited": "true", "sound": "none", "boundary_sound": "none"}
 
 
 wait_for(lambda: expected.items() <= saved_settings().items())
@@ -368,7 +372,7 @@ assert expected.items() <= saved_settings().items()
 assert find(resource=PACKAGE + ":id/interval").get("text") == "3"
 assert_unlimited()
 find(text="No sound")
-print("PASS: all six settings survive force-stop without starting a session, including both limits and No sound.", flush=True)
+print("PASS: all seven settings survive force-stop without starting a session, including both limits and No sound.", flush=True)
 
 tap_id("start_stop")
 wait_for(lambda: "phase=PLAYING" in dump())

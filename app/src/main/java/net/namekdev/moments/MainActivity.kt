@@ -19,6 +19,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
@@ -45,6 +46,7 @@ class MainActivity : Activity() {
     private lateinit var limitMode: RadioGroup
     private lateinit var unlimited: RadioButton
     private lateinit var sound: SoundSpinner
+    private lateinit var boundarySound: SoundSpinner
     internal val preview by lazy {
         SoundPreview(applicationContext) { Toast.makeText(this, R.string.preview_error, Toast.LENGTH_SHORT).show() }
     }
@@ -128,10 +130,15 @@ class MainActivity : Activity() {
         configureLayout()
         unlimited = findViewById(R.id.unlimited)
         sound = findViewById(R.id.sound)
-        sound.adapter = ArrayAdapter(this, R.layout.sound_item,
-            TickSound.entries.map { getString(it.labelRes) }).apply {
-            setDropDownViewResource(R.layout.sound_item)
+        boundarySound = findViewById(R.id.boundary_sound)
+        for (selector in listOf(sound, boundarySound)) {
+            selector.adapter = ArrayAdapter(this, R.layout.sound_item,
+                TickSound.entries.map { getString(it.labelRes) }).apply {
+                setDropDownViewResource(R.layout.sound_item)
+            }
         }
+        findViewById<View>(R.id.sound_fields).setOnClickListener { sound.performClick() }
+        findViewById<View>(R.id.boundary_sound_fields).setOnClickListener { boundarySound.performClick() }
         button = findViewById(R.id.start_stop)
         error = findViewById(R.id.playback_error)
         elapsed = findViewById(R.id.elapsed)
@@ -156,6 +163,16 @@ class MainActivity : Activity() {
         repeats.addTextChangedListener(watcher)
         minutes.addTextChangedListener(watcher)
         seconds.addTextChangedListener(watcher)
+        for ((field, decrease, increase) in listOf(
+            Triple(interval, R.id.interval_decrease, R.id.interval_increase),
+            Triple(repeats, R.id.count_decrease, R.id.count_increase))) {
+            for ((id, change) in listOf(decrease to -1, increase to 1)) {
+                findViewById<Button>(id).setOnClickListener {
+                    val current = positiveWholeNumber(field.text.toString()) ?: 1
+                    field.setText((current.toLong() + change).coerceIn(1, Int.MAX_VALUE.toLong()).toString())
+                }
+            }
+        }
         limitMode.setOnCheckedChangeListener { _, _ ->
             if (!updatingFields) {
                 restoreInvalidLimits()
@@ -164,10 +181,12 @@ class MainActivity : Activity() {
                 render()
             }
         }
-        sound.onSelection = { position ->
-            if (!updatingFields && !session.active && !startPending) {
-                saveSettings()
-                preview.play(TickSound.entries[position])
+        for (selector in listOf(sound, boundarySound)) {
+            selector.onSelection = { position ->
+                if (!updatingFields && !session.active && !startPending) {
+                    saveSettings()
+                    preview.play(TickSound.entries[position])
+                }
             }
         }
         button.setOnClickListener { if (!session.active && !startPending) startPlayback() }
@@ -185,27 +204,38 @@ class MainActivity : Activity() {
 
     private fun configureLayout() {
         val configuration = resources.configuration
-        if (configuration.fontScale >= 1.3f) {
-            for (group in listOf(limitMode, findViewById<LinearLayout>(R.id.number_fields))) {
-                group.orientation = LinearLayout.VERTICAL
-                for (index in 0 until group.childCount) {
-                    group.getChildAt(index).layoutParams = (group.getChildAt(index).layoutParams as LinearLayout.LayoutParams).apply {
-                        width = LinearLayout.LayoutParams.MATCH_PARENT
-                        weight = 0f
-                    }
+        if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE && configuration.fontScale < 1.3f) {
+            findViewById<View>(R.id.setup_subtitle).visibility = View.GONE
+            findViewById<LinearLayout>(R.id.number_fields).orientation = LinearLayout.HORIZONTAL
+            for (id in listOf(R.id.interval_fields, R.id.settings_details)) {
+                findViewById<View>(id).layoutParams = (findViewById<View>(id).layoutParams as LinearLayout.LayoutParams).apply {
+                    width = 0
+                    weight = 1f
+                    marginStart = if (id == R.id.settings_details) (24 * resources.displayMetrics.density).toInt() else 0
                 }
             }
-            findViewById<View>(R.id.limit_fields).apply {
-                layoutParams = (layoutParams as LinearLayout.LayoutParams).apply {
-                    marginStart = 0
-                    topMargin = (16 * resources.displayMetrics.density).toInt()
-                }
+            for (id in listOf(R.id.sound_fields, R.id.boundary_sound_fields)) {
+                val fields = (findViewById<LinearLayout>(id).getChildAt(1) as LinearLayout)
+                fields.orientation = LinearLayout.HORIZONTAL
+                fields.gravity = Gravity.CENTER_VERTICAL
+                fields.getChildAt(0).layoutParams = LinearLayout.LayoutParams(
+                    (92 * resources.displayMetrics.density).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT)
+                fields.getChildAt(1).layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
         }
+        val availableWidth = configuration.screenWidthDp - 2 * resources.getDimension(R.dimen.setup_padding) / resources.displayMetrics.density
+        val defaultDialSize = resources.getDimension(R.dimen.dial_size)
+        val dialSize = minOf(defaultDialSize, (availableWidth - 112) * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+        findViewById<View>(R.id.interval_dial).layoutParams = (findViewById<View>(R.id.interval_dial).layoutParams as FrameLayout.LayoutParams).apply {
+            width = dialSize
+            height = dialSize
+        }
+        interval.setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.dial_number_size) * dialSize / defaultDialSize)
         if (configuration.screenWidthDp > 600) {
             for (id in listOf(R.id.configuration_screen, R.id.playback_screen)) {
+                val maxWidth = if (id == R.id.configuration_screen && configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 840 else 600
                 findViewById<View>(id).layoutParams = FrameLayout.LayoutParams(
-                    (600 * resources.displayMetrics.density).toInt(), FrameLayout.LayoutParams.MATCH_PARENT,
+                    (minOf(configuration.screenWidthDp, maxWidth) * resources.displayMetrics.density).toInt(), FrameLayout.LayoutParams.MATCH_PARENT,
                     Gravity.CENTER_HORIZONTAL)
             }
         }
@@ -287,12 +317,13 @@ class MainActivity : Activity() {
             else -> R.id.count_mode
         })
         if (sound.selectedItemPosition != settings.sound.ordinal) sound.setSelection(settings.sound.ordinal)
+        if (boundarySound.selectedItemPosition != settings.boundarySound.ordinal) boundarySound.setSelection(settings.boundarySound.ordinal)
         updatingFields = false
     }
 
     private fun saveSettings() {
         store.saveValid(interval.text.toString(), repeats.text.toString(), unlimited.isChecked, selectedSound(),
-            selectedMode(), minutes.text.toString(), seconds.text.toString())
+            selectedMode(), minutes.text.toString(), seconds.text.toString(), selectedBoundarySound())
         updateDurationPreview()
     }
 
@@ -311,6 +342,7 @@ class MainActivity : Activity() {
     }
 
     private fun selectedSound() = TickSound.entries[sound.selectedItemPosition]
+    private fun selectedBoundarySound() = TickSound.entries[boundarySound.selectedItemPosition]
     private fun selectedMode() = when (limitMode.checkedRadioButtonId) {
         R.id.time_mode -> LimitMode.TIME
         R.id.count_mode -> LimitMode.COUNT
@@ -358,7 +390,9 @@ class MainActivity : Activity() {
         getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(interval.windowToken, 0)
         startPending = true
         val selectedSound = selectedSound()
-        session = SessionState(Phase.LOADING, settings = TickSettings(intervalSeconds, count, unlimited.isChecked, selectedSound, mode, limit))
+        val selectedBoundarySound = selectedBoundarySound()
+        session = SessionState(Phase.LOADING, settings = TickSettings(intervalSeconds, count, unlimited.isChecked,
+            selectedSound, mode, limit, selectedBoundarySound))
         render()
         try {
             startForegroundService(Intent(this, TickService::class.java).setAction(TickService.ACTION_START)
@@ -366,6 +400,7 @@ class MainActivity : Activity() {
                 .putExtra(TickService.EXTRA_REPEATS, count)
                 .putExtra(TickService.EXTRA_UNLIMITED, unlimited.isChecked)
                 .putExtra(TickService.EXTRA_SOUND, selectedSound.id)
+                .putExtra(TickService.EXTRA_BOUNDARY_SOUND, selectedBoundarySound.id)
                 .putExtra(TickService.EXTRA_TIME_MODE, mode == LimitMode.TIME)
                 .putExtra(TickService.EXTRA_TIME_LIMIT, limit))
         } catch (_: RuntimeException) {
@@ -411,14 +446,9 @@ class MainActivity : Activity() {
             timeMode -> R.id.time_minutes
             else -> R.id.repeats
         }
-        findViewById<View>(R.id.limit_fields).visibility = if (unlimited.isChecked) View.GONE else View.VISIBLE
-        repeats.visibility = if (timeMode) View.GONE else View.VISIBLE
-        findViewById<View>(R.id.time_limit_fields).visibility = if (timeMode) View.VISIBLE else View.GONE
-        findViewById<TextView>(R.id.limit_label).apply {
-            visibility = if (unlimited.isChecked) View.GONE else View.VISIBLE
-            setText(if (timeMode) R.string.time_limit_label else R.string.repeats_label)
-            labelFor = if (timeMode) View.NO_ID else R.id.repeats
-        }
+        findViewById<View>(R.id.limit_fields).visibility = if (unlimited.isChecked) View.INVISIBLE else View.VISIBLE
+        findViewById<View>(R.id.count_limit_fields).visibility = if (timeMode) View.INVISIBLE else View.VISIBLE
+        findViewById<View>(R.id.time_limit_fields).visibility = if (timeMode) View.VISIBLE else View.INVISIBLE
         repeats.isEnabled = canEdit && !unlimited.isChecked
         listOf(minutes, seconds).forEach {
             it.isEnabled = canEdit && !unlimited.isChecked
@@ -426,11 +456,14 @@ class MainActivity : Activity() {
         listOf(R.id.unlimited, R.id.count_mode, R.id.time_mode).forEach {
             findViewById<RadioButton>(it).isEnabled = canEdit
         }
-        findViewById<TextView>(R.id.count_help).apply {
-            visibility = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) View.GONE else View.VISIBLE
-            setText(if (unlimited.isChecked) R.string.unlimited_help else if (timeMode) R.string.time_limit_help else R.string.repeat_help)
+        listOf(R.id.interval_decrease, R.id.interval_increase).forEach { findViewById<View>(it).isEnabled = canEdit }
+        listOf(R.id.count_decrease, R.id.count_increase).forEach {
+            findViewById<View>(it).isEnabled = canEdit && !unlimited.isChecked && !timeMode
         }
         sound.isEnabled = canEdit
+        boundarySound.isEnabled = canEdit
+        findViewById<View>(R.id.sound_fields).isEnabled = canEdit
+        findViewById<View>(R.id.boundary_sound_fields).isEnabled = canEdit
         updateDurationPreview()
         button.isEnabled = service != null
         stopButton.isEnabled = service != null && active
