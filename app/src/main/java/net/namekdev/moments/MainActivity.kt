@@ -33,6 +33,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 
@@ -206,6 +207,15 @@ class MainActivity : Activity() {
         val configuration = resources.configuration
         if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE && configuration.fontScale < 1.3f) {
             findViewById<View>(R.id.setup_subtitle).visibility = View.GONE
+            findViewById<LinearLayout>(R.id.setup_header).orientation = LinearLayout.HORIZONTAL
+            for (id in listOf(R.id.brand_header, R.id.limit_mode)) {
+                findViewById<View>(id).layoutParams = (findViewById<View>(id).layoutParams as LinearLayout.LayoutParams).apply {
+                    width = 0
+                    weight = if (id == R.id.brand_header) 1f else 2f
+                    topMargin = 0
+                    marginStart = if (id == R.id.limit_mode) (16 * resources.displayMetrics.density).toInt() else 0
+                }
+            }
             findViewById<LinearLayout>(R.id.number_fields).orientation = LinearLayout.HORIZONTAL
             for (id in listOf(R.id.interval_fields, R.id.settings_details)) {
                 findViewById<View>(id).layoutParams = (findViewById<View>(id).layoutParams as LinearLayout.LayoutParams).apply {
@@ -223,19 +233,37 @@ class MainActivity : Activity() {
                 fields.getChildAt(1).layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
         }
-        val availableWidth = configuration.screenWidthDp - 2 * resources.getDimension(R.dimen.setup_padding) / resources.displayMetrics.density
-        val defaultDialSize = resources.getDimension(R.dimen.dial_size)
-        val dialSize = minOf(defaultDialSize, (availableWidth - 112) * resources.displayMetrics.density).toInt().coerceAtLeast(1)
-        findViewById<View>(R.id.interval_dial).layoutParams = (findViewById<View>(R.id.interval_dial).layoutParams as FrameLayout.LayoutParams).apply {
-            width = dialSize
-            height = dialSize
+        findViewById<ScrollView>(R.id.configuration_screen).addOnLayoutChangeListener { view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            // Mode changes keep the same dial size; only a resized viewport needs fitting.
+            if (right - left == oldRight - oldLeft && bottom - top == oldBottom - oldTop) return@addOnLayoutChangeListener
+            val screen = view as ScrollView
+            val area = findViewById<View>(R.id.interval_fields)
+            if (configuration.orientation == Configuration.ORIENTATION_PORTRAIT && configuration.fontScale < 1.3f) {
+                val content = screen.getChildAt(0) as LinearLayout
+                val last = (content.childCount - 1 downTo 0).map { content.getChildAt(it) }.first { it.visibility != View.GONE }
+                val otherHeight = last.bottom + content.paddingBottom - area.height
+                val height = (screen.height - otherHeight).coerceIn(
+                    (144 * resources.displayMetrics.density).toInt(), resources.getDimensionPixelSize(R.dimen.dial_area_height))
+                area.layoutParams = area.layoutParams.apply { this.height = height }
+            }
+            val defaultSize = resources.getDimension(R.dimen.dial_size)
+            val dialSize = minOf(defaultSize, area.width - 112 * resources.displayMetrics.density,
+                area.layoutParams.height - 16 * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+            findViewById<View>(R.id.interval_dial).layoutParams = (findViewById<View>(R.id.interval_dial).layoutParams as FrameLayout.LayoutParams).apply {
+                width = dialSize
+                height = dialSize
+            }
+            interval.setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.dial_number_size) * dialSize / defaultSize)
         }
-        interval.setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.dial_number_size) * dialSize / defaultDialSize)
-        if (configuration.screenWidthDp > 600) {
+        var previousWidth = 0
+        findViewById<View>(R.id.root).addOnLayoutChangeListener { root, _, _, _, _, _, _, _, _ ->
+            val availableWidth = root.width - root.paddingLeft - root.paddingRight
+            if (availableWidth == previousWidth) return@addOnLayoutChangeListener
+            previousWidth = availableWidth
             for (id in listOf(R.id.configuration_screen, R.id.playback_screen)) {
                 val maxWidth = if (id == R.id.configuration_screen && configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 840 else 600
                 findViewById<View>(id).layoutParams = FrameLayout.LayoutParams(
-                    (minOf(configuration.screenWidthDp, maxWidth) * resources.displayMetrics.density).toInt(), FrameLayout.LayoutParams.MATCH_PARENT,
+                    minOf(availableWidth, (maxWidth * resources.displayMetrics.density).toInt()), FrameLayout.LayoutParams.MATCH_PARENT,
                     Gravity.CENTER_HORIZONTAL)
             }
         }

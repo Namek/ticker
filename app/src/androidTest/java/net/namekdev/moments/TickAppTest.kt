@@ -133,6 +133,63 @@ class TickAppTest {
                 }
                 if (soundPositions == null) soundPositions = positions
                 assertEquals("Sound rows moved in orientation $expected, mode $mode", soundPositions, positions)
+                scenario.onActivity { activity ->
+                    for (id in listOf(R.id.brand_header, R.id.limit_mode, R.id.interval_decrease,
+                        R.id.interval_increase, R.id.boundary_sound, R.id.sound, R.id.start_stop)) {
+                        val view = activity.findViewById<View>(id)
+                        val visible = android.graphics.Rect()
+                        assertTrue("Control $id is hidden", view.getGlobalVisibleRect(visible))
+                        assertEquals("Control $id is clipped horizontally", view.width, visible.width())
+                        assertEquals("Control $id is clipped vertically", view.height, visible.height())
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun compactPortraitKeepsBeginVisibleAndSoundRowsFixedAfterResizing() {
+        scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+        await { activityValue { it.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT } }
+        await { activityValue { it.findViewById<View>(R.id.configuration_screen).let { screen -> screen.isLaidOut && !screen.isLayoutRequested } } }
+        var compactDialHeight = 0
+        for ((widthDp, heightDp) in listOf(360 to 640, 320 to 640, 360 to 760)) {
+            scenario.onActivity {
+                val density = it.resources.displayMetrics.density
+                it.findViewById<ScrollView>(R.id.configuration_screen).apply {
+                    layoutParams = layoutParams.apply {
+                        width = (widthDp * density).toInt()
+                        height = minOf((heightDp * density).toInt(), it.findViewById<View>(R.id.root).height)
+                    }
+                }
+            }
+            var soundPositions: List<Int>? = null
+            for (mode in listOf(R.id.count_mode, R.id.time_mode, R.id.unlimited)) {
+                scenario.onActivity { it.findViewById<RadioGroup>(R.id.limit_mode).check(mode) }
+                instrumentation.waitForIdleSync()
+                scenario.onActivity { activity ->
+                    val screen = activity.findViewById<ScrollView>(R.id.configuration_screen)
+                    assertEquals((widthDp * activity.resources.displayMetrics.density).toInt(), screen.width)
+                    assertFalse("Settings overflow ${widthDp}x$heightDp, mode $mode", screen.canScrollVertically(1) || screen.canScrollVertically(-1))
+                    val begin = activity.findViewById<Button>(R.id.start_stop)
+                    val visible = android.graphics.Rect()
+                    assertTrue(begin.getGlobalVisibleRect(visible))
+                    assertEquals("Begin is clipped", begin.height, visible.height())
+                    val positions = listOf(R.id.boundary_sound, R.id.sound).map { id ->
+                        IntArray(2).also { activity.findViewById<View>(id).getLocationOnScreen(it) }[1]
+                    }
+                    if (soundPositions == null) soundPositions = positions
+                    assertEquals("Sound rows moved in mode $mode", soundPositions, positions)
+                    val dialHeight = activity.findViewById<View>(R.id.interval_fields).height
+                    if (heightDp == 640) {
+                        assertTrue("Dial did not adapt to the shorter viewport", dialHeight < activity.resources.getDimensionPixelSize(R.dimen.dial_area_height))
+                        compactDialHeight = dialHeight
+                    } else {
+                        assertTrue("Dial did not grow after enlarging the viewport", dialHeight > compactDialHeight)
+                    }
+                    for (id in listOf(R.id.interval_decrease, R.id.interval_increase, R.id.count_decrease, R.id.count_increase)) {
+                        assertTrue(activity.findViewById<View>(id).height >= 48 * activity.resources.displayMetrics.density)
+                    }
+                }
             }
         }
     }

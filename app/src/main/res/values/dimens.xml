@@ -1,15 +1,15 @@
 <resources>
-    <dimen name="setup_padding">24dp</dimen>
+    <dimen name="setup_padding">16dp</dimen>
     <dimen name="setup_title_size">30sp</dimen>
     <dimen name="setup_header_height">56dp</dimen>
-    <dimen name="setup_gap">12dp</dimen>
+    <dimen name="setup_gap">8dp</dimen>
     <dimen name="dial_size">218dp</dimen>
     <dimen name="dial_area_height">240dp</dimen>
     <dimen name="dial_number_size">64sp</dimen>
-    <dimen name="sound_row_padding">8dp</dimen>
-    <dimen name="limit_height">64dp</dimen>
-    <dimen name="duration_height">56dp</dimen>
-    <dimen name="start_spacing">8dp</dimen>
+    <dimen name="sound_row_padding">4dp</dimen>
+    <dimen name="limit_height">56dp</dimen>
+    <dimen name="duration_height">40dp</dimen>
+    <dimen name="start_spacing">4dp</dimen>
     <dimen name="start_height">56dp</dimen>
     <dimen name="timer_size">96sp</dimen>
     <dimen name="timer_vertical_padding">24dp</dimen>

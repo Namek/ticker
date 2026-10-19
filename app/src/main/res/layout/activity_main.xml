@@ -7,33 +7,36 @@
         android:fillViewport="true" android:clipToPadding="false">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="vertical" android:padding="@dimen/setup_padding" android:focusableInTouchMode="true">
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:minHeight="@dimen/setup_header_height" android:orientation="horizontal" android:gravity="center_vertical">
-                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                    android:orientation="vertical">
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:text="@string/app_name" android:textSize="@dimen/setup_title_size" android:fontFamily="sans-serif-medium"
-                        android:textColor="@color/ink" android:accessibilityHeading="true" tools:targetApi="28" />
-                    <TextView android:id="@+id/setup_subtitle" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp" android:text="@string/find_your_pace" android:textSize="14sp" android:textColor="@color/muted" />
+            <LinearLayout android:id="@+id/setup_header" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:gravity="center_vertical">
+                <LinearLayout android:id="@+id/brand_header" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:minHeight="@dimen/setup_header_height" android:orientation="horizontal" android:gravity="center_vertical">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                        android:orientation="vertical">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="@string/app_name" android:textSize="@dimen/setup_title_size" android:fontFamily="sans-serif-medium"
+                            android:textColor="@color/ink" android:accessibilityHeading="true" tools:targetApi="28" />
+                        <TextView android:id="@+id/setup_subtitle" android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp" android:text="@string/find_your_pace" android:textSize="14sp" android:textColor="@color/muted" />
+                    </LinearLayout>
+                    <ImageView android:layout_width="44dp" android:layout_height="44dp" android:padding="12dp"
+                        android:background="@drawable/dial_badge" android:src="@drawable/ic_time" android:tint="@color/accent"
+                        android:contentDescription="@null" android:importantForAccessibility="no" />
                 </LinearLayout>
-                <ImageView android:layout_width="44dp" android:layout_height="44dp" android:padding="12dp"
-                    android:background="@drawable/dial_badge" android:src="@drawable/ic_time" android:tint="@color/accent"
-                    android:contentDescription="@null" android:importantForAccessibility="no" />
-            </LinearLayout>
 
-            <RadioGroup android:id="@+id/limit_mode" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/setup_gap" android:orientation="horizontal">
-                <RadioButton android:id="@+id/count_mode" style="@style/ModeChoice"
-                    android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                    android:text="@string/count_choice" android:tooltipText="@string/repeat_help" />
-                <RadioButton android:id="@+id/time_mode" style="@style/ModeChoice"
-                    android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                    android:text="@string/time_choice" android:tooltipText="@string/time_limit_help" />
-                <RadioButton android:id="@+id/unlimited" style="@style/ModeChoice"
-                    android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                    android:text="@string/unlimited" android:tooltipText="@string/unlimited_help" />
-            </RadioGroup>
+                <RadioGroup android:id="@+id/limit_mode" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/setup_gap" android:orientation="horizontal">
+                    <RadioButton android:id="@+id/count_mode" style="@style/ModeChoice"
+                        android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                        android:text="@string/count_choice" android:tooltipText="@string/repeat_help" />
+                    <RadioButton android:id="@+id/time_mode" style="@style/ModeChoice"
+                        android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                        android:text="@string/time_choice" android:tooltipText="@string/time_limit_help" />
+                    <RadioButton android:id="@+id/unlimited" style="@style/ModeChoice"
+                        android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                        android:text="@string/unlimited" android:tooltipText="@string/unlimited_help" />
+                </RadioGroup>
+            </LinearLayout>
 
             <LinearLayout android:id="@+id/number_fields" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/setup_gap" android:orientation="vertical" android:baselineAligned="false">
