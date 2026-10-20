@@ -1,0 +1,7 @@
+<!-- Reserve caption space in sp so it grows with the label's font size. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:minHeight="48dp" android:gravity="top" android:paddingTop="20sp" android:paddingBottom="4dp"
+    android:paddingStart="0dp" android:paddingEnd="8dp"
+    android:includeFontPadding="false" android:textColor="@color/ink" android:textSize="16sp" tools:ignore="SpUsage" />

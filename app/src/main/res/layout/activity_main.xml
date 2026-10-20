@@ -28,13 +28,13 @@
                     android:layout_marginTop="@dimen/setup_gap" android:orientation="horizontal">
                     <RadioButton android:id="@+id/count_mode" style="@style/ModeChoice"
                         android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                        android:text="@string/count_choice" android:tooltipText="@string/repeat_help" />
+                        android:drawableTop="@drawable/ic_count" android:text="@string/count_choice" android:tooltipText="@string/repeat_help" />
                     <RadioButton android:id="@+id/time_mode" style="@style/ModeChoice"
                         android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                        android:text="@string/time_choice" android:tooltipText="@string/time_limit_help" />
+                        android:drawableTop="@drawable/ic_time" android:text="@string/time_choice" android:tooltipText="@string/time_limit_help" />
                     <RadioButton android:id="@+id/unlimited" style="@style/ModeChoice"
                         android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                        android:text="@string/unlimited" android:tooltipText="@string/unlimited_help" />
+                        android:drawableTop="@drawable/ic_unlimited" android:text="@string/unlimited" android:tooltipText="@string/unlimited_help" />
                 </RadioGroup>
             </LinearLayout>
 
@@ -105,13 +105,13 @@
                             android:layout_width="match_parent" android:layout_height="wrap_content">
                             <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="16dp"
                                 android:src="@drawable/ic_bell" android:contentDescription="@null" android:importantForAccessibility="no" />
-                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                                android:orientation="vertical">
+                            <FrameLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
                                 <TextView style="@style/SoundLabel" android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:layout_marginTop="4dp"
                                     android:labelFor="@id/boundary_sound" android:text="@string/boundary_sound_label" />
                                 <net.namekdev.moments.SoundSpinner android:id="@+id/boundary_sound" style="@style/SoundChoice"
                                     android:layout_width="match_parent" android:layout_height="wrap_content" android:prompt="@string/boundary_sound_label" />
-                            </LinearLayout>
+                            </FrameLayout>
                             <ImageView android:layout_width="20dp" android:layout_height="20dp"
                                 android:src="@drawable/ic_expand" android:contentDescription="@null" android:importantForAccessibility="no" />
                         </LinearLayout>
@@ -119,13 +119,13 @@
                             android:layout_width="match_parent" android:layout_height="wrap_content">
                             <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="16dp"
                                 android:src="@drawable/ic_sound" android:contentDescription="@null" android:importantForAccessibility="no" />
-                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                                android:orientation="vertical">
+                            <FrameLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
                                 <TextView style="@style/SoundLabel" android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:layout_marginTop="4dp"
                                     android:labelFor="@id/sound" android:text="@string/interval_sound_label" />
                                 <net.namekdev.moments.SoundSpinner android:id="@+id/sound" style="@style/SoundChoice"
                                     android:layout_width="match_parent" android:layout_height="wrap_content" android:prompt="@string/interval_sound_label" />
-                            </LinearLayout>
+                            </FrameLayout>
                             <ImageView android:layout_width="20dp" android:layout_height="20dp"
                                 android:src="@drawable/ic_expand" android:contentDescription="@null" android:importantForAccessibility="no" />
                         </LinearLayout>

@@ -32,7 +32,9 @@
         <item name="android:background">@drawable/mode_background</item>
         <item name="android:gravity">center</item>
         <item name="android:minHeight">48dp</item>
-        <item name="android:padding">8dp</item>
+        <item name="android:padding">4dp</item>
+        <item name="android:drawablePadding">2dp</item>
+        <item name="android:drawableTint">@color/mode_text</item>
         <item name="android:textSize">14sp</item>
         <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:textColor">@color/mode_text</item>
@@ -58,6 +60,7 @@
     <style name="SoundLabel">
         <item name="android:textSize">12sp</item>
         <item name="android:textColor">@color/muted</item>
+        <item name="android:includeFontPadding">false</item>
     </style>
     <style name="SoundChoice" parent="android:style/Widget.Material.Spinner">
         <item name="android:saveEnabled">false</item>

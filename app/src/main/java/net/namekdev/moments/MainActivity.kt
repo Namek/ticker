@@ -132,8 +132,10 @@ class MainActivity : Activity() {
         unlimited = findViewById(R.id.unlimited)
         sound = findViewById(R.id.sound)
         boundarySound = findViewById(R.id.boundary_sound)
+        val selectedSoundLayout = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+            resources.configuration.fontScale < 1.3f) R.layout.sound_item else R.layout.sound_selection
         for (selector in listOf(sound, boundarySound)) {
-            selector.adapter = ArrayAdapter(this, R.layout.sound_item,
+            selector.adapter = ArrayAdapter(this, selectedSoundLayout,
                 TickSound.entries.map { getString(it.labelRes) }).apply {
                 setDropDownViewResource(R.layout.sound_item)
             }
@@ -225,12 +227,13 @@ class MainActivity : Activity() {
                 }
             }
             for (id in listOf(R.id.sound_fields, R.id.boundary_sound_fields)) {
-                val fields = (findViewById<LinearLayout>(id).getChildAt(1) as LinearLayout)
-                fields.orientation = LinearLayout.HORIZONTAL
-                fields.gravity = Gravity.CENTER_VERTICAL
-                fields.getChildAt(0).layoutParams = LinearLayout.LayoutParams(
-                    (92 * resources.displayMetrics.density).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT)
-                fields.getChildAt(1).layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                val fields = (findViewById<LinearLayout>(id).getChildAt(1) as FrameLayout)
+                fields.getChildAt(0).layoutParams = FrameLayout.LayoutParams(
+                    (92 * resources.displayMetrics.density).toInt(), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL)
+                fields.getChildAt(1).layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = (92 * resources.displayMetrics.density).toInt()
+                }
             }
         }
         findViewById<ScrollView>(R.id.configuration_screen).addOnLayoutChangeListener { view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
